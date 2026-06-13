@@ -31,10 +31,33 @@ export default function Purchases() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Categories and New Product Form states
+  const [categories, setCategories] = useState<any[]>([]);
+  const [showNewProductForm, setShowNewProductForm] = useState(false);
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdCategoryId, setNewProdCategoryId] = useState('');
+  const [newProdCostPrice, setNewProdCostPrice] = useState('0');
+  const [newProdQty, setNewProdQty] = useState<number>(1);
+
   useEffect(() => {
     fetchProducts();
     fetchPurchaseHistory();
+    fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const { data } = await supabase.from('categories').select('*').order('name');
+      if (data) {
+        setCategories(data);
+        if (data.length > 0) {
+          setNewProdCategoryId(data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -152,6 +175,73 @@ export default function Purchases() {
     }
   };
 
+  const handleAddNewProductToCatalog = async () => {
+    if (!newProdName.trim() || !newProdCategoryId) {
+      setErrorMsg('Product name and category are required.');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
+    const cost = parseFloat(newProdCostPrice) || 0;
+    if (cost <= 0 || newProdQty <= 0) {
+      setErrorMsg('Cost price and quantity must be greater than zero.');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
+    try {
+      // Auto-generate unique SKU and slug
+      const nameInitials = newProdName.split(' ').map(w => w[0]).join('').toUpperCase().replace(/[^A-Z]/g, '');
+      const uniqueSuffix = Math.floor(1000 + Math.random() * 9000);
+      const generatedSku = `TK-${nameInitials || 'NEW'}-${uniqueSuffix}`;
+      const generatedSlug = `${newProdName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${uniqueSuffix}`;
+
+      const newProductPayload = {
+        name: newProdName.trim(),
+        sku: generatedSku,
+        slug: generatedSlug,
+        category_id: newProdCategoryId,
+        price: cost * 1.5, // Default selling price markup
+        buying_price: cost,
+        stock: 0, // start with 0, will be incremented by the purchase restock process
+        cover_image: '---',
+        in_stock: false,
+        featured: false,
+        priority: 0,
+        gallery: [],
+        tags: []
+      };
+
+      const { data, error } = await supabase.from('products').insert([newProductPayload]).select();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data && data[0]) {
+        const createdProd = data[0];
+        
+        // Add to cart list
+        setInvoiceItems([...invoiceItems, { product: createdProd, costPrice: cost, quantity: newProdQty }]);
+        
+        // Reset and hide form
+        setNewProdName('');
+        setNewProdCostPrice('0');
+        setNewProdQty(1);
+        setShowNewProductForm(false);
+        setSuccessMsg(`Successfully added ${createdProd.name} to catalog and restock cart.`);
+        setTimeout(() => setSuccessMsg(''), 4000);
+        
+        // Refresh catalog list
+        fetchProducts();
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Failed to add new product: ${err.message || 'Check database policies.'}`);
+      setTimeout(() => setErrorMsg(''), 4000);
+    }
+  };
+
   const invoiceSubtotal = invoiceItems.reduce((sum, item) => sum + (item.costPrice * item.quantity), 0);
 
   return (
@@ -203,7 +293,15 @@ export default function Purchases() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Wholesaler Details + Product Selector Form (7 cols) */}
           <div className="lg:col-span-7 bg-tk-surface border border-tk-border p-6 rounded-2xl space-y-4">
-            <h2 className="text-sm font-bold text-tk-text-primary font-display">Log restock invoice items</h2>
+            <div className="flex justify-between items-center border-b border-tk-border pb-2">
+              <h2 className="text-sm font-bold text-tk-text-primary font-display">Log restock invoice items</h2>
+              <button
+                onClick={() => setShowNewProductForm(!showNewProductForm)}
+                className="text-3xs bg-tk-blue-light hover:bg-tk-blue-strong/20 text-tk-blue-deep font-bold px-2.5 py-1.5 rounded-lg border border-tk-border transition-colors cursor-pointer"
+              >
+                {showNewProductForm ? "Search Existing Product" : "Add Completely New Product"}
+              </button>
+            </div>
 
             <div className="space-y-4">
               <div>
@@ -217,56 +315,121 @@ export default function Purchases() {
                 />
               </div>
 
-              {/* Product search selection dropdown */}
-              <div className="relative">
-                <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Select Product to Restock</label>
-                <div className="flex items-center bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2">
-                  <Search className="w-4 h-4 text-tk-text-tertiary mr-2" />
-                  <input
-                    type="text"
-                    placeholder="Search product by name or SKU..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setShowDropdown(true);
-                    }}
-                    onFocus={() => setShowDropdown(true)}
-                    className="w-full bg-transparent text-xs text-tk-text-primary focus:outline-none placeholder-tk-text-tertiary"
-                  />
-                </div>
-
-                {showDropdown && searchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-tk-surface border border-tk-border rounded-lg shadow-lg z-50 max-h-40 overflow-y-auto no-scrollbar">
-                    {searchResults.map((product) => (
-                      <button
-                        key={product.id}
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setSearchQuery(product.name);
-                          setShowDropdown(false);
-                          setCostPrice(product.price.toString());
+              {!showNewProductForm ? (
+                <div className="space-y-4">
+                  {/* Product search selection dropdown */}
+                  <div className="relative">
+                    <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Select Product to Restock</label>
+                    <div className="flex items-center bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2">
+                      <Search className="w-4 h-4 text-tk-text-tertiary mr-2" />
+                      <input
+                        type="text"
+                        placeholder="Search product by name or SKU..."
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setShowDropdown(true);
                         }}
-                        className="w-full p-2.5 text-left border-b border-tk-border hover:bg-tk-blue-light/20 dark:hover:bg-tk-surface-2 transition-colors text-xs flex justify-between text-tk-text-primary"
-                      >
-                        <div>
-                          <p className="font-semibold">{product.name}</p>
-                          <p className="text-3xs text-tk-text-secondary">SKU: {product.sku}</p>
-                        </div>
-                        <span className="text-3xs text-tk-text-tertiary">In Stock: {product.stock}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {selectedProduct && (
-                <div className="bg-tk-surface-2 border border-tk-border p-4 rounded-xl space-y-3.5">
-                  <div className="flex justify-between items-center text-xs text-tk-text-primary">
-                    <div>
-                      <p className="font-bold">{selectedProduct.name}</p>
-                      <p className="text-3xs text-tk-text-secondary">SKU: {selectedProduct.sku}</p>
+                        onFocus={() => setShowDropdown(true)}
+                        className="w-full bg-transparent text-xs text-tk-text-primary focus:outline-none placeholder-tk-text-tertiary"
+                      />
                     </div>
-                    <span className="text-3xs text-tk-text-tertiary">Current Stock: {selectedProduct.stock} units</span>
+
+                    {showDropdown && searchResults.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-tk-surface border border-tk-border rounded-lg shadow-lg z-50 max-h-40 overflow-y-auto no-scrollbar">
+                        {searchResults.map((product) => (
+                          <button
+                            key={product.id}
+                            onClick={() => {
+                              setSelectedProduct(product);
+                              setSearchQuery(product.name);
+                              setShowDropdown(false);
+                              setCostPrice(product.price.toString());
+                            }}
+                            className="w-full p-2.5 text-left border-b border-tk-border hover:bg-tk-blue-light/20 dark:hover:bg-tk-surface-2 transition-colors text-xs flex justify-between text-tk-text-primary"
+                          >
+                            <div>
+                              <p className="font-semibold">{product.name}</p>
+                              <p className="text-3xs text-tk-text-secondary font-mono">SKU: {product.sku}</p>
+                            </div>
+                            <span className="text-3xs text-tk-text-tertiary">In Stock: {product.stock}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedProduct && (
+                    <div className="bg-tk-surface-2 border border-tk-border p-4 rounded-xl space-y-3.5">
+                      <div className="flex justify-between items-center text-xs text-tk-text-primary">
+                        <div>
+                          <p className="font-bold">{selectedProduct.name}</p>
+                          <p className="text-3xs text-tk-text-secondary">SKU: {selectedProduct.sku}</p>
+                        </div>
+                        <span className="text-3xs text-tk-text-tertiary">Current Stock: {selectedProduct.stock} units</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3.5">
+                        <div>
+                          <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Wholesale Cost Price (₹)</label>
+                          <input
+                            type="text"
+                            value={costPrice}
+                            onChange={(e) => setCostPrice(e.target.value)}
+                            className="w-full bg-tk-surface border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Quantity Purchased</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={purchaseQty}
+                            onChange={(e) => setPurchaseQty(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-full bg-tk-surface border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none text-center font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-1.5">
+                        <button
+                          onClick={addProductToInvoice}
+                          className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2 px-5 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Add Product Item
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4 pt-1.5">
+                  <p className="text-3xs text-tk-text-secondary uppercase font-bold tracking-wider mb-2">Create New Product in Catalog</p>
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Product Name *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Nivea Cool Kick Deodorant"
+                        value={newProdName}
+                        onChange={(e) => setNewProdName(e.target.value)}
+                        className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2 text-xs text-tk-text-primary focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Category Association *</label>
+                      <select
+                        value={newProdCategoryId}
+                        onChange={(e) => setNewProdCategoryId(e.target.value)}
+                        className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2.5 text-xs text-tk-text-primary focus:outline-none"
+                      >
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.id} className="bg-tk-surface">
+                            {cat.icon} {cat.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3.5">
@@ -274,29 +437,29 @@ export default function Purchases() {
                       <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Wholesale Cost Price (₹)</label>
                       <input
                         type="text"
-                        value={costPrice}
-                        onChange={(e) => setCostPrice(e.target.value)}
-                        className="w-full bg-tk-surface border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                        value={newProdCostPrice}
+                        onChange={(e) => setNewProdCostPrice(e.target.value)}
+                        className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2 text-xs text-tk-text-primary focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Quantity Purchased</label>
+                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Restock Quantity</label>
                       <input
                         type="number"
                         min="1"
-                        value={purchaseQty}
-                        onChange={(e) => setPurchaseQty(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-full bg-tk-surface border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none text-center font-bold"
+                        value={newProdQty}
+                        onChange={(e) => setNewProdQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2 text-xs text-tk-text-primary focus:outline-none text-center font-bold"
                       />
                     </div>
                   </div>
 
-                  <div className="flex justify-end pt-1.5">
+                  <div className="flex justify-end pt-2">
                     <button
-                      onClick={addProductToInvoice}
+                      onClick={handleAddNewProductToCatalog}
                       className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2 px-5 rounded-lg transition-colors cursor-pointer"
                     >
-                      Add Product Item
+                      Add New Product Item
                     </button>
                   </div>
                 </div>
