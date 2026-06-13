@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, Product, WholesalePurchase } from '../lib/supabase';
-import { Search, Plus, Trash2, FileText, CheckCircle2, AlertTriangle, ArrowDown } from 'lucide-react';
+import { Search, Plus, Trash2, FileText, CheckCircle2, AlertTriangle, ArrowDown, Eye } from 'lucide-react';
 
 export default function Purchases() {
   const [activeTab, setActiveTab] = useState<'New' | 'History'>('New');
@@ -38,6 +38,7 @@ export default function Purchases() {
   const [newProdCategoryId, setNewProdCategoryId] = useState('');
   const [newProdCostPrice, setNewProdCostPrice] = useState('0');
   const [newProdQty, setNewProdQty] = useState<number>(1);
+  const [selectedHistoryPurchase, setSelectedHistoryPurchase] = useState<WholesalePurchase | null>(null);
 
   useEffect(() => {
     fetchProducts();
@@ -546,6 +547,7 @@ export default function Purchases() {
                   <th className="py-2 text-center">Items Types</th>
                   <th className="py-2 text-right">Total Invoice Value</th>
                   <th className="py-2 text-center">Date Logged</th>
+                  <th className="py-2 text-center">View</th>
                 </tr>
               </thead>
               <tbody>
@@ -556,11 +558,84 @@ export default function Purchases() {
                     <td className="py-3 text-center text-tk-text-secondary">{ph.items.length} categories</td>
                     <td className="py-3 text-right font-bold text-tk-gold">₹{ph.total.toFixed(2)}</td>
                     <td className="py-3 text-center text-tk-text-secondary">{new Date(ph.created_at).toLocaleDateString()}</td>
+                    <td className="py-3 text-center">
+                      <button
+                        onClick={() => setSelectedHistoryPurchase(ph)}
+                        className="text-tk-blue-bright hover:text-tk-blue-deep cursor-pointer transition-colors"
+                        title="View Purchase Details"
+                      >
+                        <Eye className="w-4.5 h-4.5 mx-auto" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Selected History Purchase Details Modal */}
+      {selectedHistoryPurchase && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-tk-surface border border-tk-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-tk-border pb-3">
+              <div>
+                <h2 className="text-sm font-bold text-tk-text-primary font-display">Wholesale Invoice Details</h2>
+                <p className="text-3xs text-tk-text-secondary mt-0.5">Invoice: #{selectedHistoryPurchase.id}</p>
+              </div>
+              <button 
+                onClick={() => setSelectedHistoryPurchase(null)}
+                className="text-tk-text-secondary hover:text-tk-text-primary text-xs font-semibold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="text-xs space-y-2.5">
+              <div className="grid grid-cols-2 gap-4 bg-tk-surface-2 border border-tk-border p-3 rounded-xl text-tk-text-primary">
+                <div>
+                  <span className="text-3xs text-tk-text-secondary uppercase font-semibold block mb-0.5">Wholesaler Dealer</span>
+                  <span className="font-bold">{selectedHistoryPurchase.wholesaler_name}</span>
+                </div>
+                <div>
+                  <span className="text-3xs text-tk-text-secondary uppercase font-semibold block mb-0.5">Date Logged</span>
+                  <span className="font-semibold">{new Date(selectedHistoryPurchase.created_at).toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div className="border border-tk-border rounded-xl overflow-hidden bg-tk-surface">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-tk-surface-2 border-b border-tk-border text-tk-text-secondary font-semibold text-3xs uppercase tracking-wider">
+                      <th className="p-2.5">Item</th>
+                      <th className="p-2.5 text-center">Qty</th>
+                      <th className="p-2.5 text-right">Unit Cost</th>
+                      <th className="p-2.5 text-right">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedHistoryPurchase.items.map((item, idx) => (
+                      <tr key={idx} className="border-b border-tk-border text-tk-text-primary">
+                        <td className="p-2.5">
+                          <p className="font-semibold">{item.name}</p>
+                          <p className="text-3xs text-tk-text-secondary font-mono">SKU: {item.sku}</p>
+                        </td>
+                        <td className="p-2.5 text-center font-semibold">{item.quantity}</td>
+                        <td className="p-2.5 text-right text-tk-text-secondary">₹{item.cost_price.toFixed(2)}</td>
+                        <td className="p-2.5 text-right font-bold">₹{item.subtotal.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-tk-border flex justify-between items-center text-xs">
+              <span className="font-bold text-tk-text-primary">Total Invoice Value:</span>
+              <span className="text-base font-extrabold text-tk-gold">₹{selectedHistoryPurchase.total.toFixed(2)}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
