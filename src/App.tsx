@@ -54,6 +54,14 @@ export default function App() {
     manageWholesale: false,
     voidTransactions: false
   });
+  
+  // Profile edit states
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profilePassword, setProfilePassword] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
 
   useEffect(() => {
     // 1. Theme sync with system or stored preference
@@ -76,6 +84,16 @@ export default function App() {
       setCurrentUser(JSON.parse(savedSession));
     }
   }, []);
+
+  useEffect(() => {
+    if (currentUser && showProfileModal) {
+      setProfileName(currentUser.name);
+      setProfileEmail(currentUser.email);
+      setProfilePassword('');
+      setProfileError('');
+      setProfileSuccess('');
+    }
+  }, [showProfileModal, currentUser]);
 
   useEffect(() => {
     if (currentUser) {
@@ -132,6 +150,89 @@ export default function App() {
     setActiveTab('POS');
   };
 
+  const handleUpdateProfile = () => {
+    if (!profileName.trim() || !profileEmail.trim() || !currentUser) {
+      setProfileError('Name and Email cannot be empty.');
+      return;
+    }
+
+    const cleanEmail = profileEmail.toLowerCase().trim();
+
+    // Check for email uniqueness
+    const cashierList = JSON.parse(localStorage.getItem('tk_cashier_list') || '[]');
+    const ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || JSON.stringify({
+      id: 'owner',
+      name: 'Owner',
+      email: 'owner@tekart.com',
+      password: 'admin123',
+      role: 'admin'
+    }));
+
+    const isEmailTaken = (cleanEmail === ownerProfile.email.toLowerCase().trim() && currentUser.role !== 'admin') ||
+      cashierList.some((c: any) => c.id !== currentUser.id && c.email.toLowerCase().trim() === cleanEmail);
+
+    if (isEmailTaken) {
+      setProfileError('This email address is already in use.');
+      return;
+    }
+
+    if (currentUser.role === 'admin') {
+      const updatedOwner = {
+        ...ownerProfile,
+        name: profileName.trim(),
+        email: cleanEmail,
+      };
+
+      if (profilePassword.trim()) {
+        updatedOwner.password = profilePassword.trim();
+      }
+
+      localStorage.setItem('tk_owner_profile', JSON.stringify(updatedOwner));
+      
+      const updatedUser: CurrentUser = {
+        ...currentUser,
+        name: updatedOwner.name,
+        email: updatedOwner.email
+      };
+      setCurrentUser(updatedUser);
+      sessionStorage.setItem('tk_pos_session', JSON.stringify(updatedUser));
+      setProfileSuccess('Owner profile updated successfully.');
+    } else {
+      const updatedList = cashierList.map((c: any) => {
+        if (c.id === currentUser.id) {
+          const updatedCashier = {
+            ...c,
+            name: profileName.trim(),
+            email: cleanEmail,
+          };
+          if (profilePassword.trim()) {
+            updatedCashier.password = profilePassword.trim();
+          }
+          return updatedCashier;
+        }
+        return c;
+      });
+
+      localStorage.setItem('tk_cashier_list', JSON.stringify(updatedList));
+
+      const updatedUser: CurrentUser = {
+        ...currentUser,
+        name: profileName.trim(),
+        email: cleanEmail
+      };
+      setCurrentUser(updatedUser);
+      sessionStorage.setItem('tk_pos_session', JSON.stringify(updatedUser));
+      setProfileSuccess('Profile updated successfully.');
+    }
+    
+    setProfilePassword('');
+    setTimeout(() => {
+      setShowProfileModal(false);
+      setProfileSuccess('');
+      setProfileError('');
+    }, 1500);
+  };
+
   const toggleTheme = () => {
     const root = document.documentElement;
     if (theme === 'light') {
@@ -181,13 +282,17 @@ export default function App() {
         </div>
 
         <div className="flex items-center space-x-4">
-          {/* Active Cashier Name */}
-          <div className="flex items-center space-x-2 bg-tk-surface-2 border border-tk-border rounded-xl px-3.5 py-1.5 text-xs text-tk-text-primary">
+          {/* Active Cashier Name / Profile Settings Trigger */}
+          <button
+            onClick={() => setShowProfileModal(true)}
+            className="flex items-center space-x-2 bg-tk-surface-2 hover:bg-tk-blue-light/30 border border-tk-border rounded-xl px-3.5 py-1.5 text-xs text-tk-text-primary cursor-pointer transition-colors"
+            title="Edit My Profile & Credentials"
+          >
             <User className="w-4 h-4 text-tk-gold" />
             <span className="font-extrabold truncate max-w-[150px]">
-              {currentUser.role === 'admin' ? 'Owner (Admin)' : `${currentUser.name}`}
+              {currentUser.name}
             </span>
-          </div>
+          </button>
 
           {/* Theme Selector */}
           <button 
@@ -255,7 +360,7 @@ export default function App() {
         <main className="flex-1 overflow-y-auto p-6 bg-tk-bg text-tk-text-primary">
           {activeTab === 'POS' && (
             <POS 
-              cashierName={currentUser.role === 'admin' ? 'Owner (Admin)' : currentUser.name} 
+              cashierName={currentUser.name} 
               isCashierRole={currentUser.role !== 'admin'}
               cashierPermissions={cashierPermissions}
             />
@@ -290,6 +395,78 @@ export default function App() {
           {activeTab === 'Settings' && <Settings onPermissionsChange={loadCashierPermissions} />}
         </main>
       </div>
+
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-tk-surface border border-tk-border rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-tk-border pb-3">
+              <h2 className="text-sm font-bold text-tk-text-primary font-display">Edit Profile Credentials</h2>
+              <button 
+                onClick={() => {
+                  setShowProfileModal(false);
+                  setProfileError('');
+                  setProfileSuccess('');
+                }}
+                className="text-tk-text-secondary hover:text-tk-text-primary text-xs font-semibold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            {profileError && (
+              <div className="bg-red-500/10 border border-red-505 text-red-500 p-2.5 rounded-xl text-2xs">
+                {profileError}
+              </div>
+            )}
+            {profileSuccess && (
+              <div className="bg-green-500/10 border border-green-505 text-green-500 p-2.5 rounded-xl text-2xs">
+                {profileSuccess}
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Your Name</label>
+                <input
+                  type="text"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Login Email Address</label>
+                <input
+                  type="email"
+                  value={profileEmail}
+                  onChange={(e) => setProfileEmail(e.target.value)}
+                  className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">New Password</label>
+                <input
+                  type="password"
+                  placeholder="Enter new password (or leave blank)"
+                  value={profilePassword}
+                  onChange={(e) => setProfilePassword(e.target.value)}
+                  className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={handleUpdateProfile}
+                className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2 px-5 rounded-lg transition-colors cursor-pointer"
+              >
+                Save Profile Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

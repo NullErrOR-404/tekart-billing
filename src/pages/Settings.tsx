@@ -33,7 +33,9 @@ export default function Settings({ onPermissionsChange }: SettingsProps) {
   const [newCashierName, setNewCashierName] = useState('');
   const [newCashierEmail, setNewCashierEmail] = useState('');
   const [newCashierPassword, setNewCashierPassword] = useState('');
-  const [updatePasswordVal, setUpdatePasswordVal] = useState('');
+  const [editCashierName, setEditCashierName] = useState('');
+  const [editCashierEmail, setEditCashierEmail] = useState('');
+  const [editCashierPassword, setEditCashierPassword] = useState('');
 
   // Notifications
   const [successMsg, setSuccessMsg] = useState('');
@@ -45,6 +47,9 @@ export default function Settings({ onPermissionsChange }: SettingsProps) {
     if (savedCashiers.length > 0) {
       setSelectedCashierId(savedCashiers[0].id);
       loadCashierPermissions(savedCashiers[0].id);
+      setEditCashierName(savedCashiers[0].name);
+      setEditCashierEmail(savedCashiers[0].email);
+      setEditCashierPassword('');
     }
   }, []);
 
@@ -66,6 +71,13 @@ export default function Settings({ onPermissionsChange }: SettingsProps) {
     const id = e.target.value;
     setSelectedCashierId(id);
     loadCashierPermissions(id);
+    
+    const cashier = cashiers.find(c => c.id === id);
+    if (cashier) {
+      setEditCashierName(cashier.name);
+      setEditCashierEmail(cashier.email);
+      setEditCashierPassword('');
+    }
   };
 
   const handleSavePermissions = () => {
@@ -87,27 +99,56 @@ export default function Settings({ onPermissionsChange }: SettingsProps) {
     });
   };
 
-  const handleUpdatePassword = () => {
+  const handleUpdateCashierProfile = () => {
     if (!selectedCashierId) return;
-    if (!updatePasswordVal.trim()) {
-      setErrorMsg('Password cannot be empty.');
+    if (!editCashierName.trim() || !editCashierEmail.trim()) {
+      setErrorMsg('Name and Email cannot be empty.');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
+    const cleanEmail = editCashierEmail.toLowerCase().trim();
+
+    // Check if email is already taken by other users
+    const ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || JSON.stringify({
+      id: 'owner',
+      name: 'Owner',
+      email: 'owner@tekart.com',
+      password: 'admin123',
+      role: 'admin'
+    }));
+
+    const isEmailTaken = cleanEmail === ownerProfile.email.toLowerCase().trim() ||
+      cashiers.some(c => c.id !== selectedCashierId && c.email.toLowerCase().trim() === cleanEmail);
+
+    if (isEmailTaken) {
+      setErrorMsg('This email address is already in use.');
       setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
 
     const updatedList = cashiers.map(c => {
       if (c.id === selectedCashierId) {
-        return { ...c, password: updatePasswordVal.trim() };
+        const updated = {
+          ...c,
+          name: editCashierName.trim(),
+          email: cleanEmail
+        };
+        if (editCashierPassword.trim()) {
+          updated.password = editCashierPassword.trim();
+        }
+        return updated;
       }
       return c;
     });
 
     setCashiers(updatedList);
     localStorage.setItem('tk_cashier_list', JSON.stringify(updatedList));
-    setUpdatePasswordVal('');
+    setEditCashierPassword('');
 
-    setSuccessMsg('Password updated successfully.');
+    setSuccessMsg('Cashier profile updated successfully.');
     setTimeout(() => setSuccessMsg(''), 4000);
+    onPermissionsChange();
   };
 
   const handleAddCashier = () => {
@@ -200,20 +241,34 @@ export default function Settings({ onPermissionsChange }: SettingsProps) {
 
             {selectedCashierId && (
               <div className="border-t border-tk-border pt-3.5 space-y-2.5">
-                <label className="text-3xs text-tk-text-secondary uppercase font-bold tracking-wider block">Update Password</label>
-                <div className="flex space-x-2">
+                <label className="text-3xs text-tk-text-secondary uppercase font-bold tracking-wider block">Update Cashier Profile</label>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Cashier Name"
+                    value={editCashierName}
+                    onChange={(e) => setEditCashierName(e.target.value)}
+                    className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                  />
+                  <input
+                    type="email"
+                    placeholder="Cashier Email"
+                    value={editCashierEmail}
+                    onChange={(e) => setEditCashierEmail(e.target.value)}
+                    className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                  />
                   <input
                     type="password"
-                    placeholder="New Password"
-                    value={updatePasswordVal}
-                    onChange={(e) => setUpdatePasswordVal(e.target.value)}
-                    className="flex-1 bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                    placeholder="New Password (leave blank to keep current)"
+                    value={editCashierPassword}
+                    onChange={(e) => setEditCashierPassword(e.target.value)}
+                    className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
                   />
                   <button
-                    onClick={handleUpdatePassword}
-                    className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-1.5 px-3 rounded-lg cursor-pointer transition-colors"
+                    onClick={handleUpdateCashierProfile}
+                    className="w-full bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2 rounded-lg cursor-pointer transition-colors"
                   >
-                    Update
+                    Save Cashier Changes
                   </button>
                 </div>
               </div>

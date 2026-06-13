@@ -26,11 +26,19 @@ export default function Login({ onLoginSuccess, theme, toggleTheme }: LoginProps
     const cleanEmail = email.toLowerCase().trim();
 
     // 1. Check Admin/Owner credentials
-    if (cleanEmail === 'owner@tekart.com' && password === 'admin123') {
+    const ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || JSON.stringify({
+      id: 'owner',
+      name: 'Owner',
+      email: 'owner@tekart.com',
+      password: 'admin123',
+      role: 'admin'
+    }));
+
+    if (cleanEmail === ownerProfile.email.toLowerCase().trim() && password === ownerProfile.password) {
       onLoginSuccess({
         id: 'owner',
-        name: 'Owner',
-        email: 'owner@tekart.com',
+        name: ownerProfile.name,
+        email: ownerProfile.email,
         role: 'admin'
       });
       return;
@@ -143,12 +151,7 @@ export default function Login({ onLoginSuccess, theme, toggleTheme }: LoginProps
           </button>
         </form>
 
-        {/* Help tips / credentials box */}
-        <div className="bg-tk-surface-2/50 border border-tk-border p-3 rounded-xl text-3xs text-tk-text-secondary space-y-1 text-center font-mono">
-          <p className="font-bold text-tk-text-tertiary uppercase mb-0.5">Mock Login Credentials</p>
-          <p>Owner: owner@tekart.com | admin123</p>
-          <p>Cashier: amit@tekart.com | amit123</p>
-        </div>
+
       </div>
     </div>
   );
