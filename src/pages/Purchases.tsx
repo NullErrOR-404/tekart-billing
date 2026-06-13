@@ -205,7 +205,6 @@ export default function Purchases() {
         buying_price: cost,
         stock: 0, // start with 0, will be incremented by the purchase restock process
         cover_image: '---',
-        in_stock: false,
         featured: false,
         priority: 0,
         gallery: [],
