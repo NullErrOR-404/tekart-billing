@@ -1,0 +1,406 @@
+import React, { useState, useEffect } from 'react';
+import { supabase, Product, WholesalePurchase } from '../lib/supabase';
+import { Search, Plus, Trash2, FileText, CheckCircle2, AlertTriangle, ArrowDown } from 'lucide-react';
+
+export default function Purchases() {
+  const [activeTab, setActiveTab] = useState<'New' | 'History'>('New');
+  const [products, setProducts] = useState<Product[]>([]);
+  
+  // Wholesaler states
+  const [wholesalerName, setWholesalerName] = useState('');
+  
+  // Selection states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [costPrice, setCostPrice] = useState<string>('0');
+  const [purchaseQty, setPurchaseQty] = useState<number>(1);
+
+  // Cart / Invoice state
+  const [invoiceItems, setInvoiceItems] = useState<{
+    product: Product;
+    costPrice: number;
+    quantity: number;
+  }[]>([]);
+
+  // History states
+  const [purchaseHistory, setPurchaseHistory] = useState<WholesalePurchase[]>([]);
+
+  // Messages
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    fetchProducts();
+    fetchPurchaseHistory();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      const { data } = await supabase.from('products').select('*').order('name');
+      if (data) setProducts(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchPurchaseHistory = async () => {
+    try {
+      const { data } = await supabase.from('wholesale_purchases').select('*').order('created_at', { ascending: false });
+      if (data) setPurchaseHistory(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Autocomplete search
+  useEffect(() => {
+    if (!searchQuery) {
+      setSearchResults([]);
+      return;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    const filtered = products.filter(p => 
+      p.name.toLowerCase().includes(query) || p.sku.toLowerCase().includes(query)
+    );
+    setSearchResults(filtered);
+  }, [searchQuery, products]);
+
+  const addProductToInvoice = () => {
+    if (!selectedProduct) return;
+    const cost = parseFloat(costPrice) || 0;
+    if (cost <= 0 || purchaseQty <= 0) {
+      setErrorMsg('Price and quantity must be greater than zero.');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
+    const existingIndex = invoiceItems.findIndex(item => item.product.id === selectedProduct.id);
+    if (existingIndex > -1) {
+      const updated = [...invoiceItems];
+      updated[existingIndex].quantity += purchaseQty;
+      updated[existingIndex].costPrice = cost;
+      setInvoiceItems(updated);
+    } else {
+      setInvoiceItems([...invoiceItems, { product: selectedProduct, costPrice: cost, quantity: purchaseQty }]);
+    }
+
+    setSelectedProduct(null);
+    setSearchQuery('');
+    setCostPrice('0');
+    setPurchaseQty(1);
+  };
+
+  const removeFromInvoice = (index: number) => {
+    const updated = [...invoiceItems];
+    updated.splice(index, 1);
+    setInvoiceItems(updated);
+  };
+
+  const handleCompletePurchase = async () => {
+    if (!wholesalerName.trim()) {
+      setErrorMsg('Please enter the wholesaler dealer name.');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
+    if (invoiceItems.length === 0) {
+      setErrorMsg('Invoice items list is empty.');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
+    try {
+      for (const item of invoiceItems) {
+        const newStock = item.product.stock + item.quantity;
+        await supabase.from('products').update({ stock: newStock }).eq('id', item.product.id);
+      }
+
+      const items = invoiceItems.map(item => ({
+        product_id: item.product.id,
+        name: item.product.name,
+        sku: item.product.sku,
+        cost_price: item.costPrice,
+        quantity: item.quantity,
+        subtotal: item.costPrice * item.quantity
+      }));
+
+      const grandTotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+
+      const record = {
+        wholesaler_name: wholesalerName,
+        items,
+        total: grandTotal
+      };
+
+      const { data } = await supabase.from('wholesale_purchases').insert([record]).select();
+
+      if (data && data[0]) {
+        setSuccessMsg(`Restocked wholesale purchase successfully. Stock levels updated!`);
+        setTimeout(() => setSuccessMsg(''), 4000);
+        
+        setInvoiceItems([]);
+        setWholesalerName('');
+        fetchProducts();
+        fetchPurchaseHistory();
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Failed to process wholesale purchase.');
+      setTimeout(() => setErrorMsg(''), 4000);
+    }
+  };
+
+  const invoiceSubtotal = invoiceItems.reduce((sum, item) => sum + (item.costPrice * item.quantity), 0);
+
+  return (
+    <div className="space-y-4 max-w-7xl mx-auto p-1">
+      {/* Title */}
+      <div className="bg-tk-surface border border-tk-border p-4 rounded-2xl tk-glass">
+        <h1 className="text-xl font-bold font-display text-tk-text-primary">Wholesale Purchases</h1>
+        <p className="text-xs text-tk-text-secondary">Log bulk/supply restock invoices from wholesale dealers to adjust inventory stock counts</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex space-x-2 bg-tk-surface-2 p-1 border border-tk-border rounded-xl max-w-sm">
+        <button
+          onClick={() => setActiveTab('New')}
+          className={`flex-1 py-2 text-2xs font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center space-x-1 ${
+            activeTab === 'New' ? 'bg-tk-blue-mid text-white' : 'text-tk-text-secondary hover:text-tk-text-primary'
+          }`}
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>New Purchase</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('History')}
+          className={`flex-1 py-2 text-2xs font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center space-x-1 ${
+            activeTab === 'History' ? 'bg-tk-blue-mid text-white' : 'text-tk-text-secondary hover:text-tk-text-primary'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>Purchase History</span>
+        </button>
+      </div>
+
+      {/* Messages */}
+      {successMsg && (
+        <div className="bg-green-500/10 border border-green-500/20 text-green-500 p-3 rounded-xl flex items-center space-x-2 text-xs">
+          <CheckCircle2 className="w-4.5 h-4.5" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+      {errorMsg && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-505 p-3 rounded-xl flex items-center space-x-2 text-xs">
+          <AlertTriangle className="w-4.5 h-4.5" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* Tab: New Wholesaler Purchase */}
+      {activeTab === 'New' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Wholesaler Details + Product Selector Form (7 cols) */}
+          <div className="lg:col-span-7 bg-tk-surface border border-tk-border p-6 rounded-2xl space-y-4">
+            <h2 className="text-sm font-bold text-tk-text-primary font-display">Log restock invoice items</h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Wholesaler Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Balaji Distributors Pvt Ltd"
+                  value={wholesalerName}
+                  onChange={(e) => setWholesalerName(e.target.value)}
+                  className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2 text-xs text-tk-text-primary focus:outline-none focus:border-tk-blue-mid"
+                />
+              </div>
+
+              {/* Product search selection dropdown */}
+              <div className="relative">
+                <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Select Product to Restock</label>
+                <div className="flex items-center bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2">
+                  <Search className="w-4 h-4 text-tk-text-tertiary mr-2" />
+                  <input
+                    type="text"
+                    placeholder="Search product by name or SKU..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setShowDropdown(true);
+                    }}
+                    onFocus={() => setShowDropdown(true)}
+                    className="w-full bg-transparent text-xs text-tk-text-primary focus:outline-none placeholder-tk-text-tertiary"
+                  />
+                </div>
+
+                {showDropdown && searchResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-tk-surface border border-tk-border rounded-lg shadow-lg z-50 max-h-40 overflow-y-auto no-scrollbar">
+                    {searchResults.map((product) => (
+                      <button
+                        key={product.id}
+                        onClick={() => {
+                          setSelectedProduct(product);
+                          setSearchQuery(product.name);
+                          setShowDropdown(false);
+                          setCostPrice(product.price.toString());
+                        }}
+                        className="w-full p-2.5 text-left border-b border-tk-border hover:bg-tk-blue-light/20 dark:hover:bg-tk-surface-2 transition-colors text-xs flex justify-between text-tk-text-primary"
+                      >
+                        <div>
+                          <p className="font-semibold">{product.name}</p>
+                          <p className="text-3xs text-tk-text-secondary">SKU: {product.sku}</p>
+                        </div>
+                        <span className="text-3xs text-tk-text-tertiary">In Stock: {product.stock}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {selectedProduct && (
+                <div className="bg-tk-surface-2 border border-tk-border p-4 rounded-xl space-y-3.5">
+                  <div className="flex justify-between items-center text-xs text-tk-text-primary">
+                    <div>
+                      <p className="font-bold">{selectedProduct.name}</p>
+                      <p className="text-3xs text-tk-text-secondary">SKU: {selectedProduct.sku}</p>
+                    </div>
+                    <span className="text-3xs text-tk-text-tertiary">Current Stock: {selectedProduct.stock} units</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Wholesale Cost Price (₹)</label>
+                      <input
+                        type="text"
+                        value={costPrice}
+                        onChange={(e) => setCostPrice(e.target.value)}
+                        className="w-full bg-tk-surface border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Quantity Purchased</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={purchaseQty}
+                        onChange={(e) => setPurchaseQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full bg-tk-surface border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none text-center font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1.5">
+                    <button
+                      onClick={addProductToInvoice}
+                      className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2 px-5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Add Product Item
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Active Invoice Table (5 cols) */}
+          <div className="lg:col-span-5 bg-tk-surface border border-tk-border p-6 rounded-2xl flex flex-col justify-between h-[380px]">
+            <div className="space-y-3.5 flex-1 flex flex-col">
+              <h2 className="text-sm font-bold text-tk-text-primary font-display border-b border-tk-border pb-2">Wholesale Invoice items</h2>
+              
+              <div className="flex-1 overflow-y-auto pr-1 no-scrollbar text-xs">
+                {invoiceItems.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-tk-text-secondary">
+                    <ArrowDown className="w-8 h-8 text-tk-text-tertiary mb-1 animate-bounce" />
+                    <p>Log wholesale items on the left to build restock invoice.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-tk-border text-tk-text-secondary font-semibold">
+                        <th className="py-2">Item</th>
+                        <th className="py-2 text-center">Qty</th>
+                        <th className="py-2 text-right">Cost</th>
+                        <th className="py-2 text-right"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoiceItems.map((item, idx) => (
+                        <tr key={item.product.id} className="border-b border-tk-border">
+                          <td className="py-2.5">
+                            <p className="font-semibold text-tk-text-primary">{item.product.name}</p>
+                            <p className="text-3xs text-tk-text-secondary font-mono">SKU: {item.product.sku}</p>
+                          </td>
+                          <td className="py-2.5 text-center text-tk-text-primary">{item.quantity}</td>
+                          <td className="py-2.5 text-right text-tk-text-primary font-semibold">₹{(item.costPrice * item.quantity).toFixed(2)}</td>
+                          <td className="py-2.5 text-right">
+                            <button
+                              onClick={() => removeFromInvoice(idx)}
+                              className="text-red-500 hover:text-red-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-tk-border pt-3.5 space-y-3.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-bold text-tk-text-primary">Invoice Subtotal:</span>
+                <span className="font-bold text-tk-gold">₹{invoiceSubtotal.toFixed(2)}</span>
+              </div>
+              <button
+                onClick={handleCompletePurchase}
+                disabled={invoiceItems.length === 0}
+                className="w-full bg-green-500 hover:bg-green-600 disabled:bg-tk-surface-2 disabled:text-tk-text-tertiary text-slate-950 font-extrabold text-sm py-2.5 rounded-xl cursor-pointer"
+              >
+                Complete Purchase & Restock
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Purchase History */}
+      {activeTab === 'History' && (
+        <div className="bg-tk-surface border border-tk-border rounded-2xl p-6 overflow-x-auto no-scrollbar">
+          {purchaseHistory.length === 0 ? (
+            <div className="text-center py-10 text-tk-text-secondary">
+              <FileText className="w-10 h-10 text-tk-text-tertiary mx-auto mb-1" />
+              <p>No bulk purchases logged yet.</p>
+            </div>
+          ) : (
+            <table className="w-full text-left text-xs border-collapse min-w-[600px]">
+              <thead>
+                <tr className="border-b border-tk-border text-tk-text-secondary pb-2 font-semibold">
+                  <th className="py-2">Purchase ID</th>
+                  <th className="py-2">Wholesaler Dealer Name</th>
+                  <th className="py-2 text-center">Items Types</th>
+                  <th className="py-2 text-right">Total Invoice Value</th>
+                  <th className="py-2 text-center">Date Logged</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchaseHistory.map(ph => (
+                  <tr key={ph.id} className="border-b border-tk-border hover:bg-tk-blue-light/10">
+                    <td className="py-3 font-semibold text-tk-text-primary">#{ph.id.substring(0, 8)}...</td>
+                    <td className="py-3 font-semibold text-tk-text-primary">{ph.wholesaler_name}</td>
+                    <td className="py-3 text-center text-tk-text-secondary">{ph.items.length} categories</td>
+                    <td className="py-3 text-right font-bold text-tk-gold">₹{ph.total.toFixed(2)}</td>
+                    <td className="py-3 text-center text-tk-text-secondary">{new Date(ph.created_at).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

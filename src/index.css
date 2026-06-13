@@ -1,0 +1,153 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  --tk-blue-deep: #1832B8;
+  --tk-blue-mid: #2D5BE3;
+  --tk-blue-bright: #4D8FFF;
+  --tk-blue-light: #EEF2FF;
+  --tk-blue-pale: #F5F7FF;
+  --tk-text-primary: #0F0F12;
+  --tk-text-secondary: #5A5F7A;
+  --tk-text-tertiary: #9BA0B8;
+  --tk-bg: #F5F7FF;
+  --tk-surface: #FFFFFF;
+  --tk-surface-2: #EEF2FF;
+  --tk-border: rgba(24, 50, 184, 0.10);
+  --tk-border-strong: rgba(24, 50, 184, 0.20);
+  --tk-wa: #25D366;
+  --tk-wa-dark: #1DA851;
+  
+  /* Gold/amber highlight elements for POS */
+  --tk-gold: #D4AF37;
+  --tk-gold-hover: #AA8B1E;
+}
+
+.dark {
+  --tk-blue-deep: #4D8FFF;
+  --tk-blue-mid: #2D5BE3;
+  --tk-blue-bright: #689FFF;
+  --tk-blue-light: #121A36;
+  --tk-blue-pale: #0A0D1A;
+  --tk-text-primary: #F3F4F6;
+  --tk-text-secondary: #9BA0B8;
+  --tk-text-tertiary: #5A5F7A;
+  --tk-bg: #070913;
+  --tk-surface: #0E1222;
+  --tk-surface-2: #161C33;
+  --tk-border: rgba(77, 143, 255, 0.15);
+  --tk-border-strong: rgba(77, 143, 255, 0.25);
+  --tk-wa: #25D366;
+  --tk-wa-dark: #1DA851;
+  
+  --tk-gold: #F4C430;
+  --tk-gold-hover: #D4AF37;
+}
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Syne', sans-serif;
+  
+  --color-tk-blue-deep: var(--tk-blue-deep);
+  --color-tk-blue-mid: var(--tk-blue-mid);
+  --color-tk-blue-bright: var(--tk-blue-bright);
+  --color-tk-blue-light: var(--tk-blue-light);
+  --color-tk-blue-pale: var(--tk-blue-pale);
+  --color-tk-text-primary: var(--tk-text-primary);
+  --color-tk-text-secondary: var(--tk-text-secondary);
+  --color-tk-text-tertiary: var(--tk-text-tertiary);
+  --color-tk-bg: var(--tk-bg);
+  --color-tk-surface: var(--tk-surface);
+  --color-tk-surface-2: var(--tk-surface-2);
+  --color-tk-border: var(--tk-border);
+  --color-tk-border-strong: var(--tk-border-strong);
+  --color-tk-wa: var(--tk-wa);
+  --color-tk-wa-dark: var(--tk-wa-dark);
+  --color-tk-gold: var(--tk-gold);
+  --color-tk-gold-hover: var(--tk-gold-hover);
+  
+  --radius-tk-chip: 4px;
+  --radius-tk-input: 8px;
+  --radius-tk-card: 16px;
+  --radius-tk-modal: 24px;
+}
+
+:root {
+  background-color: var(--tk-bg);
+  color: var(--tk-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--tk-bg);
+  color: var(--tk-text-primary);
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--tk-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--tk-border-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--tk-blue-mid);
+}
+
+/* Glassmorphism utilities */
+.tk-glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--tk-border);
+}
+
+.dark .tk-glass {
+  background: rgba(14, 18, 34, 0.75);
+  border: 1px solid var(--tk-border);
+}
+
+/* Receipt Print Styling */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  .print-receipt-area, 
+  .print-receipt-area * {
+    visibility: visible;
+  }
+  
+  .print-receipt-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm; /* Standard thermal width */
+    padding: 2mm;
+    margin: 0;
+    color: #000000 !important;
+    background: #FFFFFF !important;
+    font-size: 12px !important;
+    line-height: 1.2;
+  }
+  
+  /* Hide print buttons and scrollbars during printing */
+  .no-print {
+    display: none !important;
+  }
+}
