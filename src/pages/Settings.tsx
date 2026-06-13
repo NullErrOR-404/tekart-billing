@@ -151,6 +151,52 @@ export default function Settings({ onPermissionsChange }: SettingsProps) {
     onPermissionsChange();
   };
 
+  const handleRemoveCashier = () => {
+    if (!selectedCashierId) return;
+    const cashier = cashiers.find(c => c.id === selectedCashierId);
+    if (!cashier) return;
+
+    if (!window.confirm(`Are you sure you want to remove employee ${cashier.name}? This will delete their login credentials and permissions, but retains all their past sales records.`)) {
+      return;
+    }
+
+    const updatedList = cashiers.filter(c => c.id !== selectedCashierId);
+    setCashiers(updatedList);
+    localStorage.setItem('tk_cashier_list', JSON.stringify(updatedList));
+
+    // Remove permissions mapping
+    const allPermissions = JSON.parse(localStorage.getItem('tk_cashier_permissions_map') || '{}');
+    delete allPermissions[selectedCashierId];
+    localStorage.setItem('tk_cashier_permissions_map', JSON.stringify(allPermissions));
+
+    // Select first cashier or reset selection
+    if (updatedList.length > 0) {
+      setSelectedCashierId(updatedList[0].id);
+      loadCashierPermissions(updatedList[0].id);
+      setEditCashierName(updatedList[0].name);
+      setEditCashierEmail(updatedList[0].email);
+      setEditCashierPassword('');
+    } else {
+      setSelectedCashierId('');
+      setPermissions({
+        viewAnalytics: false,
+        viewAccounts: false,
+        editStockDirectly: false,
+        manageRetailReturns: false,
+        manageWholesaleReturns: false,
+        manageWholesale: false,
+        voidTransactions: false
+      });
+      setEditCashierName('');
+      setEditCashierEmail('');
+      setEditCashierPassword('');
+    }
+
+    setSuccessMsg(`Successfully removed employee ${cashier.name}.`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+    onPermissionsChange();
+  };
+
   const handleAddCashier = () => {
     if (!newCashierName.trim() || !newCashierEmail.trim() || !newCashierPassword.trim()) {
       setErrorMsg('Name, Email, and Password are all required.');
@@ -264,12 +310,21 @@ export default function Settings({ onPermissionsChange }: SettingsProps) {
                     onChange={(e) => setEditCashierPassword(e.target.value)}
                     className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
                   />
-                  <button
-                    onClick={handleUpdateCashierProfile}
-                    className="w-full bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2 rounded-lg cursor-pointer transition-colors"
-                  >
-                    Save Cashier Changes
-                  </button>
+                  <div className="flex space-x-2 pt-1">
+                    <button
+                      onClick={handleUpdateCashierProfile}
+                      className="flex-1 bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2.5 rounded-lg cursor-pointer transition-colors"
+                    >
+                      Save Cashier Changes
+                    </button>
+                    <button
+                      onClick={handleRemoveCashier}
+                      className="bg-red-500 hover:bg-red-650 text-white font-bold text-xs py-2.5 px-3 rounded-lg cursor-pointer transition-colors"
+                      title="Delete Cashier Account"
+                    >
+                      Remove Employee
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
