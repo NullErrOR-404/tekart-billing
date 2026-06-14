@@ -403,7 +403,7 @@ export default function App() {
           {activeTab === 'Accounts' && <Accounts />}
           {activeTab === 'Analytics' && <Analytics />}
           {activeTab === 'Settings' && <Settings onPermissionsChange={loadCashierPermissions} />}
-          {activeTab === 'Roles' && <Roles />}
+          {activeTab === 'Roles' && <Roles currentUser={currentUser} />}
         </main>
       </div>
 
