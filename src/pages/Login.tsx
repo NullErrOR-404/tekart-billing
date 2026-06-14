@@ -59,7 +59,7 @@ export default function Login({ onLoginSuccess, theme, toggleTheme }: LoginProps
         id: matchedCashier.id,
         name: matchedCashier.name,
         email: matchedCashier.email,
-        role: 'cashier'
+        role: matchedCashier.role || 'cashier'
       });
     } else {
       setErrorMsg('Invalid email or password. Please try again.');

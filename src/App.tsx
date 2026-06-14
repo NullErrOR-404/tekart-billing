@@ -8,6 +8,7 @@ import Customers from './pages/Customers';
 import Accounts from './pages/Accounts';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import Roles from './pages/Roles';
 import Login from './pages/Login';
 import { isMockMode } from './lib/supabase';
 import tekartLogo from './assets/tekart-logo.png';
@@ -24,10 +25,11 @@ import {
   Sun,
   Moon,
   LogOut,
-  User
+  User,
+  Shield
 } from 'lucide-react';
 
-type TabId = 'POS' | 'History' | 'RetailReturns' | 'WholesaleReturns' | 'Inventory' | 'Purchases' | 'Customers' | 'Accounts' | 'Analytics' | 'Settings';
+type TabId = 'POS' | 'History' | 'RetailReturns' | 'WholesaleReturns' | 'Inventory' | 'Purchases' | 'Customers' | 'Accounts' | 'Analytics' | 'Settings' | 'Roles';
 
 interface CurrentUser {
   id: string;
@@ -336,7 +338,8 @@ export default function App() {
               { id: 'Customers', label: 'Customers directory', icon: Users },
               { id: 'Accounts', label: 'Finance & Ledgers', icon: Percent },
               { id: 'Analytics', label: 'Analytics Reports', icon: TrendingUp },
-              { id: 'Settings', label: 'Admin Settings', icon: SettingsIcon }
+              { id: 'Settings', label: 'Admin Settings', icon: SettingsIcon },
+              { id: 'Roles', label: 'Role Management', icon: Shield }
             ].map(item => {
               if (!isTabVisible(item.id as TabId)) return null;
               const Icon = item.icon;
@@ -400,6 +403,7 @@ export default function App() {
           {activeTab === 'Accounts' && <Accounts />}
           {activeTab === 'Analytics' && <Analytics />}
           {activeTab === 'Settings' && <Settings onPermissionsChange={loadCashierPermissions} />}
+          {activeTab === 'Roles' && <Roles />}
         </main>
       </div>
 
