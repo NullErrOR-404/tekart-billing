@@ -26,13 +26,17 @@ export default function Login({ onLoginSuccess, theme, toggleTheme }: LoginProps
     const cleanEmail = email.toLowerCase().trim();
 
     // 1. Check Admin/Owner credentials
-    const ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || JSON.stringify({
-      id: 'owner',
-      name: 'Owner',
-      email: 'owner@tekart.com',
-      password: 'admin123',
-      role: 'admin'
-    }));
+    let ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || 'null');
+    if (!ownerProfile || ownerProfile.email === 'owner@tekart.com') {
+      ownerProfile = {
+        id: 'owner',
+        name: 'Owner',
+        email: 'sameen14nmofficial@gmail.com',
+        password: 'Mdsameen-2006',
+        role: 'admin'
+      };
+      localStorage.setItem('tk_owner_profile', JSON.stringify(ownerProfile));
+    }
 
     if (cleanEmail === ownerProfile.email.toLowerCase().trim() && password === ownerProfile.password) {
       onLoginSuccess({

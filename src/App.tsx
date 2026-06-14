@@ -78,7 +78,14 @@ export default function App() {
       setTheme('light');
     }
 
-    // 2. Try loading active session from SessionStorage
+    // 2. Check for tab parameter in query string
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab') as TabId;
+    if (tabParam && ['POS', 'History', 'RetailReturns', 'WholesaleReturns', 'Inventory', 'Purchases', 'Customers', 'Accounts', 'Analytics', 'Settings'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+
+    // 3. Try loading active session from SessionStorage
     const savedSession = sessionStorage.getItem('tk_pos_session');
     if (savedSession) {
       setCurrentUser(JSON.parse(savedSession));

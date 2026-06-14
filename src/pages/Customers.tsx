@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, Customer, Transaction } from '../lib/supabase';
-import { Search, User, FileText, ShoppingBag, Landmark } from 'lucide-react';
+import { Search, User, FileText, ShoppingBag, Landmark, Trash2 } from 'lucide-react';
 
 export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -28,6 +28,30 @@ export default function Customers() {
       if (data) setTransactions(data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDeleteCustomer = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this customer? This will permanently delete their profile from the directory. Past sales records won't be deleted but will no longer be linked to this profile.")) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', id);
+        
+      if (error) throw error;
+      
+      // Reset selected customer
+      setSelectedCustomer(null);
+      
+      // Refresh list
+      fetchCustomers();
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to delete customer: ${err.message || err}`);
     }
   };
 
@@ -138,9 +162,18 @@ export default function Customers() {
 
             {/* Customer purchase history listing */}
             <div className="bg-tk-surface border border-tk-border p-5 rounded-2xl flex-1 flex flex-col">
-              <h2 className="text-sm font-bold font-display text-tk-text-primary border-b border-tk-border pb-2.5 mb-3.5">
-                Billing Invoices for {selectedCustomer.name}
-              </h2>
+              <div className="flex justify-between items-center border-b border-tk-border pb-2.5 mb-3.5">
+                <h2 className="text-sm font-bold font-display text-tk-text-primary">
+                  Billing Invoices for {selectedCustomer.name}
+                </h2>
+                <button
+                  onClick={() => handleDeleteCustomer(selectedCustomer.id)}
+                  className="text-3xs bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold px-2.5 py-1.5 rounded-lg border border-red-500/20 transition-colors cursor-pointer flex items-center space-x-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Customer</span>
+                </button>
+              </div>
 
               <div className="flex-1 overflow-y-auto max-h-[350px] pr-1 no-scrollbar text-xs space-y-3">
                 {getCustomerTransactions(selectedCustomer.phone).length === 0 ? (

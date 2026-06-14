@@ -78,6 +78,34 @@ export default function Purchases() {
     }
   };
 
+  const handleDeletePurchase = async (purchaseId: string) => {
+    if (!window.confirm("Are you sure you want to delete this wholesale purchase record? This will remove the record from history and exclude it from accounts/ledger analytics. Stock levels won't be reverted automatically.")) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('wholesale_purchases')
+        .delete()
+        .eq('id', purchaseId);
+        
+      if (error) throw error;
+      
+      setSuccessMsg('Wholesale purchase record deleted successfully.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      
+      if (selectedHistoryPurchase?.id === purchaseId) {
+        setSelectedHistoryPurchase(null);
+      }
+      
+      fetchPurchaseHistory();
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Failed to delete record: ${err.message || err}`);
+      setTimeout(() => setErrorMsg(''), 4000);
+    }
+  };
+
   // Autocomplete search
   useEffect(() => {
     if (!searchQuery) {
@@ -489,24 +517,43 @@ export default function Purchases() {
                       </tr>
                     </thead>
                     <tbody>
-                      {invoiceItems.map((item, idx) => (
-                        <tr key={item.product.id} className="border-b border-tk-border">
-                          <td className="py-2.5">
-                            <p className="font-semibold text-tk-text-primary">{item.product.name}</p>
-                            <p className="text-3xs text-tk-text-secondary font-mono">SKU: {item.product.sku}</p>
-                          </td>
-                          <td className="py-2.5 text-center text-tk-text-primary">{item.quantity}</td>
-                          <td className="py-2.5 text-right text-tk-text-primary font-semibold">₹{(item.costPrice * item.quantity).toFixed(2)}</td>
-                          <td className="py-2.5 text-right">
-                            <button
-                              onClick={() => removeFromInvoice(idx)}
-                              className="text-red-500 hover:text-red-400 cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {invoiceItems.map((item, idx) => {
+                        const matched = products.find(p => p.id === item.product.id) || item.product;
+                        const hasImage = matched.cover_image && matched.cover_image !== '---';
+                        return (
+                          <tr key={item.product.id} className="border-b border-tk-border">
+                            <td className="py-2.5">
+                              <div className="flex items-center space-x-2.5">
+                                {hasImage ? (
+                                  <img 
+                                    src={matched.cover_image} 
+                                    alt={matched.name} 
+                                    className="w-8 h-8 object-cover rounded-lg bg-tk-surface-2 border border-tk-border flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-lg bg-tk-surface-2 border border-tk-border flex items-center justify-center flex-shrink-0 text-tk-text-tertiary font-bold text-3xs font-mono">
+                                    {matched.name.substring(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="font-semibold text-tk-text-primary">{matched.name}</p>
+                                  <p className="text-3xs text-tk-text-secondary font-mono">SKU: {matched.sku}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-2.5 text-center text-tk-text-primary">{item.quantity}</td>
+                            <td className="py-2.5 text-right text-tk-text-primary font-semibold">₹{(item.costPrice * item.quantity).toFixed(2)}</td>
+                            <td className="py-2.5 text-right">
+                              <button
+                                onClick={() => removeFromInvoice(idx)}
+                                className="text-red-500 hover:text-red-400 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}
@@ -547,7 +594,7 @@ export default function Purchases() {
                   <th className="py-2 text-center">Items Types</th>
                   <th className="py-2 text-right">Total Invoice Value</th>
                   <th className="py-2 text-center">Date Logged</th>
-                  <th className="py-2 text-center">View</th>
+                  <th className="py-2 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -559,13 +606,22 @@ export default function Purchases() {
                     <td className="py-3 text-right font-bold text-tk-gold">₹{ph.total.toFixed(2)}</td>
                     <td className="py-3 text-center text-tk-text-secondary">{new Date(ph.created_at).toLocaleDateString()}</td>
                     <td className="py-3 text-center">
-                      <button
-                        onClick={() => setSelectedHistoryPurchase(ph)}
-                        className="text-tk-blue-bright hover:text-tk-blue-deep cursor-pointer transition-colors"
-                        title="View Purchase Details"
-                      >
-                        <Eye className="w-4.5 h-4.5 mx-auto" />
-                      </button>
+                      <div className="flex justify-center items-center space-x-3">
+                        <button
+                          onClick={() => setSelectedHistoryPurchase(ph)}
+                          className="text-tk-blue-bright hover:text-tk-blue-deep cursor-pointer transition-colors"
+                          title="View Purchase Details"
+                        >
+                          <Eye className="w-4.5 h-4.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePurchase(ph.id)}
+                          className="text-red-500 hover:text-red-400 cursor-pointer transition-colors"
+                          title="Delete Purchase Record"
+                        >
+                          <Trash2 className="w-4.5 h-4.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -615,25 +671,56 @@ export default function Purchases() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedHistoryPurchase.items.map((item, idx) => (
-                      <tr key={idx} className="border-b border-tk-border text-tk-text-primary">
-                        <td className="p-2.5">
-                          <p className="font-semibold">{item.name}</p>
-                          <p className="text-3xs text-tk-text-secondary font-mono">SKU: {item.sku}</p>
-                        </td>
-                        <td className="p-2.5 text-center font-semibold">{item.quantity}</td>
-                        <td className="p-2.5 text-right text-tk-text-secondary">₹{item.cost_price.toFixed(2)}</td>
-                        <td className="p-2.5 text-right font-bold">₹{item.subtotal.toFixed(2)}</td>
-                      </tr>
-                    ))}
+                     {selectedHistoryPurchase.items.map((item, idx) => {
+                       const matched = products.find(p => p.id === item.product_id);
+                       const displayName = matched ? matched.name : item.name;
+                       const displaySku = matched ? matched.sku : item.sku;
+                       const hasImage = matched && matched.cover_image && matched.cover_image !== '---';
+                       
+                       return (
+                         <tr key={idx} className="border-b border-tk-border text-tk-text-primary">
+                           <td className="p-2.5">
+                             <div className="flex items-center space-x-2.5">
+                               {hasImage ? (
+                                 <img 
+                                   src={matched.cover_image} 
+                                   alt={displayName} 
+                                   className="w-8 h-8 object-cover rounded-lg bg-tk-surface-2 border border-tk-border flex-shrink-0"
+                                 />
+                               ) : (
+                                 <div className="w-8 h-8 rounded-lg bg-tk-surface-2 border border-tk-border flex items-center justify-center flex-shrink-0 text-tk-text-tertiary font-bold text-3xs font-mono">
+                                   {displayName.substring(0, 2).toUpperCase()}
+                                 </div>
+                               )}
+                               <div>
+                                 <p className="font-semibold">{displayName}</p>
+                                 <p className="text-3xs text-tk-text-secondary font-mono">SKU: {displaySku}</p>
+                               </div>
+                             </div>
+                           </td>
+                           <td className="p-2.5 text-center font-semibold">{item.quantity}</td>
+                           <td className="p-2.5 text-right text-tk-text-secondary">₹{item.cost_price.toFixed(2)}</td>
+                           <td className="p-2.5 text-right font-bold">₹{item.subtotal.toFixed(2)}</td>
+                         </tr>
+                       );
+                     })}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            <div className="pt-2 border-t border-tk-border flex justify-between items-center text-xs">
-              <span className="font-bold text-tk-text-primary">Total Invoice Value:</span>
-              <span className="text-base font-extrabold text-tk-gold">₹{selectedHistoryPurchase.total.toFixed(2)}</span>
+            <div className="pt-3 border-t border-tk-border flex justify-between items-center text-xs">
+              <button
+                onClick={() => handleDeletePurchase(selectedHistoryPurchase.id)}
+                className="bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold px-3 py-1.5 rounded-lg border border-red-500/20 transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Invoice</span>
+              </button>
+              <div className="text-right">
+                <span className="font-bold text-tk-text-secondary mr-2">Total Invoice Value:</span>
+                <span className="text-base font-extrabold text-tk-gold">₹{selectedHistoryPurchase.total.toFixed(2)}</span>
+              </div>
             </div>
           </div>
         </div>
