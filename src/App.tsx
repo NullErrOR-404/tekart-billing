@@ -437,15 +437,17 @@ export default function App() {
             )}
 
             <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Your Name</label>
-                <input
-                  type="text"
-                  value={profileName}
-                  onChange={(e) => setProfileName(e.target.value)}
-                  className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
-                />
-              </div>
+              {currentUser.role !== 'admin' && (
+                <div>
+                  <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Your Name</label>
+                  <input
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                  />
+                </div>
+              )}
               <div>
                 <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Login Email Address</label>
                 <input
@@ -455,16 +457,18 @@ export default function App() {
                   className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
                 />
               </div>
-              <div>
-                <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">New Password</label>
-                <input
-                  type="password"
-                  placeholder="Enter new password (or leave blank)"
-                  value={profilePassword}
-                  onChange={(e) => setProfilePassword(e.target.value)}
-                  className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
-                />
-              </div>
+              {currentUser.role !== 'admin' && (
+                <div>
+                  <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">New Password</label>
+                  <input
+                    type="password"
+                    placeholder="Enter new password (or leave blank)"
+                    value={profilePassword}
+                    onChange={(e) => setProfilePassword(e.target.value)}
+                    className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-2.5 py-1.5 text-xs text-tk-text-primary focus:outline-none"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="pt-2 flex justify-end">
