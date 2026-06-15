@@ -329,6 +329,29 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
     }
   };
 
+  const handleDeleteProduct = async (productId: string, productName: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${productName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+
+      if (error) throw error;
+
+      setSuccessMsg(`Deleted product "${productName}" successfully.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+      fetchProducts();
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Failed to delete product: ${err.message || err}`);
+      setTimeout(() => setErrorMsg(''), 6000);
+    }
+  };
+
   const handleDeleteBranch = (branchToDelete: string) => {
     const updated = branches.filter(b => b !== branchToDelete);
     localStorage.setItem('tk_branches', JSON.stringify(updated));
@@ -639,6 +662,7 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                   <th className="py-2 text-center font-semibold">Selling Price</th>
                   <th className="py-2 text-center font-semibold">Stock Quantity</th>
                   {isAdmin && <th className="py-2 text-right font-semibold">Selling Value</th>}
+                  <th className="py-2 text-right font-semibold pr-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -711,6 +735,15 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                       )}
                     </td>
                     {isAdmin && <td className="py-3 text-right font-bold text-tk-gold">₹{(p.price * p.stock).toFixed(2)}</td>}
+                    <td className="py-3 text-right pr-2">
+                      <button
+                        onClick={() => handleDeleteProduct(p.id, p.name)}
+                        className="text-red-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
+                        title="Delete Product"
+                      >
+                        <Trash2 className="w-4 h-4 inline" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
