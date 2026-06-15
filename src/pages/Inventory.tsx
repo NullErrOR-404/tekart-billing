@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, Product, Category } from '../lib/supabase';
-import { Search, AlertTriangle, ArrowRightLeft, FileText, CheckCircle2, ChevronRight, Trash2, Plus, Info, Edit } from 'lucide-react';
+import { Search, AlertTriangle, ArrowRightLeft, FileText, CheckCircle2, ChevronRight, Trash2, Plus, Info, Edit, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface InventoryProps {
   currentUserRole: 'admin' | 'cashier';
@@ -52,6 +52,10 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
   // Inline Stock Edit states
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editingStockVal, setEditingStockVal] = useState<string>('');
+
+  // Sorting states
+  const [sortField, setSortField] = useState<'name' | 'price' | 'stock' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   const isAdmin = currentUserRole === 'admin';
   const canEditStock = isAdmin || cashierPermissions.editStockDirectly;
@@ -401,11 +405,36 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
     return cat ? cat.name : 'Unknown';
   };
 
+  const handleSort = (field: 'name' | 'price' | 'stock') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'name' ? 'asc' : 'desc');
+    }
+  };
+
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           p.sku.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || p.category_id === selectedCategory;
     return matchesSearch && matchesCategory;
+  });
+
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (!sortField) return 0;
+    
+    let aVal: any = a[sortField === 'price' ? 'price' : sortField === 'stock' ? 'stock' : 'name'];
+    let bVal: any = b[sortField === 'price' ? 'price' : sortField === 'stock' ? 'stock' : 'name'];
+
+    if (typeof aVal === 'string') {
+      aVal = aVal.toLowerCase();
+      bVal = bVal.toLowerCase();
+    }
+
+    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
   });
 
   const lowStockProducts = products.filter(p => p.stock < threshold);
@@ -655,18 +684,54 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
             <table className="w-full text-left text-xs border-collapse min-w-[600px]">
               <thead>
                 <tr className="border-b border-tk-border text-tk-text-secondary pb-2">
-                  <th className="py-2 font-semibold">Product SKU</th>
-                  <th className="py-2 font-semibold">Name</th>
-                  <th className="py-2 font-semibold">Category</th>
-                  {isAdmin && <th className="py-2 text-center font-semibold text-purple-400">Buying Cost</th>}
-                  <th className="py-2 text-center font-semibold">Selling Price</th>
-                  <th className="py-2 text-center font-semibold">Stock Quantity</th>
-                  {isAdmin && <th className="py-2 text-right font-semibold">Selling Value</th>}
-                  <th className="py-2 text-right font-semibold pr-2">Actions</th>
+                  <th className="py-2 font-semibold select-none">Product SKU</th>
+                  <th 
+                    className="py-2 font-semibold cursor-pointer hover:text-tk-blue-bright select-none transition-colors"
+                    onClick={() => handleSort('name')}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Name</span>
+                      {sortField === 'name' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 opacity-50" />
+                      )}
+                    </div>
+                  </th>
+                  <th className="py-2 font-semibold select-none">Category</th>
+                  {isAdmin && <th className="py-2 text-center font-semibold text-purple-400 select-none">Buying Cost</th>}
+                  <th 
+                    className="py-2 text-center font-semibold cursor-pointer hover:text-tk-blue-bright select-none transition-colors"
+                    onClick={() => handleSort('price')}
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>Selling Price</span>
+                      {sortField === 'price' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 opacity-50" />
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    className="py-2 text-center font-semibold cursor-pointer hover:text-tk-blue-bright select-none transition-colors"
+                    onClick={() => handleSort('stock')}
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>Stock Quantity</span>
+                      {sortField === 'stock' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 opacity-50" />
+                      )}
+                    </div>
+                  </th>
+                  {isAdmin && <th className="py-2 text-right font-semibold select-none">Selling Value</th>}
+                  <th className="py-2 text-right font-semibold pr-2 select-none">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map(p => (
+                {sortedProducts.map(p => (
                   <tr key={p.id} className="border-b border-tk-border hover:bg-tk-blue-light/10">
                     <td className="py-3 font-mono font-bold text-tk-text-primary text-3xs">{p.sku}</td>
                     <td className="py-3 flex items-center">
