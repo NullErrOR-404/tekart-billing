@@ -66,6 +66,27 @@ export default function App() {
   const [profileSuccess, setProfileSuccess] = useState('');
 
   useEffect(() => {
+    // 0. Ensure owner profile is updated to Sameen (Developer) / sameen@tekart.com
+    let ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || 'null');
+    if (!ownerProfile || ownerProfile.email === 'owner@tekart.com' || ownerProfile.email === 'sameen14nmofficial@gmail.com' || ownerProfile.name === 'Owner') {
+      ownerProfile = {
+        id: 'owner',
+        name: 'Sameen (Developer)',
+        email: 'sameen@tekart.com',
+        password: 'Mdsameen-2006',
+        role: 'admin'
+      };
+      localStorage.setItem('tk_owner_profile', JSON.stringify(ownerProfile));
+
+      // Clean up duplicate cashier list entries
+      const cashierList = JSON.parse(localStorage.getItem('tk_cashier_list') || '[]');
+      const filtered = cashierList.filter((u: any) => 
+        u.email.toLowerCase().trim() !== 'sameen@tekart.com' && 
+        u.email.toLowerCase().trim() !== 'sameen14nmofficial@gmail.com'
+      );
+      localStorage.setItem('tk_cashier_list', JSON.stringify(filtered));
+    }
+
     // 1. Theme sync with system or stored preference
     const savedTheme = localStorage.getItem('tk_theme');
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -87,10 +108,16 @@ export default function App() {
       setActiveTab(tabParam);
     }
 
-    // 3. Try loading active session from SessionStorage
+    // 3. Try loading active session from SessionStorage and sync it with owner profile if logged in
     const savedSession = sessionStorage.getItem('tk_pos_session');
     if (savedSession) {
-      setCurrentUser(JSON.parse(savedSession));
+      const parsedSession = JSON.parse(savedSession);
+      if (parsedSession.id === 'owner' && ownerProfile) {
+        parsedSession.name = ownerProfile.name;
+        parsedSession.email = ownerProfile.email;
+        sessionStorage.setItem('tk_pos_session', JSON.stringify(parsedSession));
+      }
+      setCurrentUser(parsedSession);
     }
   }, []);
 
