@@ -43,15 +43,23 @@ export default function Login({ onLoginSuccess, theme, toggleTheme }: LoginProps
 
     // 1. Check Admin/Owner credentials
     let ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || 'null');
-    if (!ownerProfile || ownerProfile.email === 'owner@tekart.com') {
+    if (!ownerProfile || ownerProfile.email === 'owner@tekart.com' || ownerProfile.email === 'sameen14nmofficial@gmail.com') {
       ownerProfile = {
         id: 'owner',
-        name: 'Owner',
-        email: 'sameen14nmofficial@gmail.com',
+        name: 'Sameen (Developer)',
+        email: 'sameen@tekart.com',
         password: 'Mdsameen-2006',
         role: 'admin'
       };
       localStorage.setItem('tk_owner_profile', JSON.stringify(ownerProfile));
+      
+      // Clean up duplicate cashier list entries
+      const cashierList = JSON.parse(localStorage.getItem('tk_cashier_list') || '[]');
+      const filtered = cashierList.filter((u: any) => 
+        u.email.toLowerCase().trim() !== 'sameen@tekart.com' && 
+        u.email.toLowerCase().trim() !== 'sameen14nmofficial@gmail.com'
+      );
+      localStorage.setItem('tk_cashier_list', JSON.stringify(filtered));
     }
 
     if (cleanEmail === ownerProfile.email.toLowerCase().trim() && password === ownerProfile.password) {

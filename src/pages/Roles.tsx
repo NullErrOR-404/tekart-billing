@@ -44,16 +44,29 @@ export default function Roles({ currentUser }: RolesProps) {
   }, []);
 
   const loadUsers = () => {
-    const ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || JSON.stringify({
-      id: 'owner',
-      name: 'Owner',
-      email: 'sameen14nmofficial@gmail.com',
-      password: 'Mdsameen-2006',
-      role: 'admin'
-    }));
+    let ownerProfile = JSON.parse(localStorage.getItem('tk_owner_profile') || 'null');
+    if (!ownerProfile || ownerProfile.email === 'owner@tekart.com' || ownerProfile.email === 'sameen14nmofficial@gmail.com') {
+      ownerProfile = {
+        id: 'owner',
+        name: 'Sameen (Developer)',
+        email: 'sameen@tekart.com',
+        password: 'Mdsameen-2006',
+        role: 'admin'
+      };
+      localStorage.setItem('tk_owner_profile', JSON.stringify(ownerProfile));
+    }
     setOwner(ownerProfile);
 
-    const cashierList = JSON.parse(localStorage.getItem('tk_cashier_list') || '[]');
+    // Clean up duplicate cashier list entries
+    let cashierList = JSON.parse(localStorage.getItem('tk_cashier_list') || '[]');
+    const initialLength = cashierList.length;
+    cashierList = cashierList.filter((u: any) => 
+      u.email.toLowerCase().trim() !== 'sameen@tekart.com' && 
+      u.email.toLowerCase().trim() !== 'sameen14nmofficial@gmail.com'
+    );
+    if (cashierList.length !== initialLength) {
+      localStorage.setItem('tk_cashier_list', JSON.stringify(cashierList));
+    }
     setCashiers(cashierList);
   };
 
