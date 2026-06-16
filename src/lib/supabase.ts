@@ -34,6 +34,10 @@ export interface ProductColor {
   sku?: string;
   stock: number;
   description?: string;
+  short_description?: string;
+  tags?: string[];
+  seo_title?: string;
+  seo_description?: string;
 }
 
 export interface Product {
