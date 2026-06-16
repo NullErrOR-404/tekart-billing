@@ -22,6 +22,7 @@ export interface Category {
   icon?: string;
   cover_image?: string;
   priority: number;
+  is_hidden?: boolean;
   created_at: string;
 }
 
