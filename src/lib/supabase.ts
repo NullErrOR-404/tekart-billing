@@ -33,6 +33,7 @@ export interface ProductColor {
   price?: number;
   sku?: string;
   stock: number;
+  description?: string;
 }
 
 export interface Product {

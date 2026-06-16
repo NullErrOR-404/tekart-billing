@@ -743,6 +743,31 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                             Archived / Hidden
                           </span>
                         )}
+                        {p.colors && p.colors.length > 0 && (
+                          <div className="flex items-center gap-1 mt-1">
+                            {p.colors.map((color, cIdx) => {
+                              const isSoldOut = color.stock !== undefined && color.stock <= 0;
+                              return (
+                                <div 
+                                  key={cIdx} 
+                                  className="relative" 
+                                  title={`${color.name} (Stock: ${color.stock ?? 0})`}
+                                >
+                                  <span 
+                                    className="w-3.5 h-3.5 rounded-full border border-tk-border/50 block shadow-2xs shrink-0 relative" 
+                                    style={{ backgroundColor: color.hex }}
+                                  >
+                                    {isSoldOut && (
+                                      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-red-600 leading-none select-none bg-black/10 rounded-full">
+                                        ×
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="py-3 text-tk-text-secondary">{getCategoryName(p.category_id)}</td>

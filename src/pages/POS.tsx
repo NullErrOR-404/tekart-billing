@@ -455,7 +455,7 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
           <div className="bg-tk-surface border border-tk-border p-4 rounded-2xl tk-glass grid grid-cols-1 md:grid-cols-12 gap-4">
             <div className="md:col-span-3">
               <img 
-                src={selectedProduct.cover_image} 
+                src={selectedColorForProduct?.image_url || selectedProduct.cover_image} 
                 alt={selectedProduct.name} 
                 className="w-full h-24 object-cover rounded-lg border border-tk-border bg-tk-surface-2"
               />
