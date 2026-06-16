@@ -26,6 +26,15 @@ export interface Category {
   created_at: string;
 }
 
+export interface ProductColor {
+  name: string;
+  hex: string;
+  image_url?: string;
+  price?: number;
+  sku?: string;
+  stock: number;
+}
+
 export interface Product {
   id: string;
   sku: string;
@@ -46,6 +55,7 @@ export interface Product {
   cover_image: string;
   tags: string[];
   priority: number;
+  colors?: ProductColor[];
   created_at: string;
   updated_at: string;
 }
@@ -68,6 +78,8 @@ export interface TransactionItem {
   subtotal: number;
   gst_percent?: number;
   gst_amount?: number;
+  color_name?: string | null;
+  variant_sku?: string | null;
 }
 
 export interface Transaction {

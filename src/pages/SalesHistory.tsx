@@ -31,13 +31,30 @@ export default function SalesHistory() {
     }
 
     try {
-      // 1. Restock products in DB
+      // 1. Restock products in DB (with support for color variants)
       for (const item of receipt.items) {
-        // Fetch current product stock
-        const { data: prod } = await supabase.from('products').select('stock').eq('id', item.id).single();
+        // Fetch current product stock and colors
+        const { data: prod } = await supabase.from('products').select('colors, stock').eq('id', item.id).single();
         if (prod) {
-          const newStock = prod.stock + item.quantity;
-          await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
+          if (item.color_name && prod.colors) {
+            const updatedColors = prod.colors.map((color: any) => {
+              if (color.name === item.color_name) {
+                return {
+                  ...color,
+                  stock: (color.stock || 0) + item.quantity
+                };
+              }
+              return color;
+            });
+            const newStock = updatedColors.reduce((sum: number, c: any) => sum + (c.stock || 0), 0);
+            await supabase.from('products').update({
+              colors: updatedColors,
+              stock: newStock
+            }).eq('id', item.id);
+          } else {
+            const newStock = prod.stock + item.quantity;
+            await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
+          }
         }
       }
 

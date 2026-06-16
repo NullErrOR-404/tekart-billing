@@ -21,7 +21,8 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
   const [itemGstPercent, setItemGstPercent] = useState<string>('');
   
   // Cart state
-  const [cart, setCart] = useState<{ product: Product; quantity: number; gstPercent: number }[]>([]);
+  const [cart, setCart] = useState<{ product: Product; quantity: number; gstPercent: number; selectedColor?: any }[]>([]);
+  const [selectedColorForProduct, setSelectedColorForProduct] = useState<any | null>(null);
   
   // Customer state
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -102,25 +103,52 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
     setSearchQuery('');
     setShowDropdown(false);
     setQuantity(1);
+    
+    // Auto-select first in-stock color option if present
+    if (product.colors && product.colors.length > 0) {
+      const inStockColors = product.colors.filter(c => c.stock === undefined || c.stock > 0);
+      if (inStockColors.length > 0) {
+        setSelectedColorForProduct(inStockColors[0]);
+      } else {
+        setSelectedColorForProduct(null);
+      }
+    } else {
+      setSelectedColorForProduct(null);
+    }
   };
 
   const addToCart = () => {
     if (!selectedProduct) return;
     if (quantity <= 0) return;
 
-    if (selectedProduct.stock < quantity) {
-      setErrorMsg(`Insufficient stock. Only ${selectedProduct.stock} left in stock.`);
+    let maxAvailableStock = selectedProduct.stock;
+    if (selectedProduct.colors && selectedProduct.colors.length > 0) {
+      if (!selectedColorForProduct) {
+        setErrorMsg('Please select a color variant.');
+        setTimeout(() => setErrorMsg(''), 4000);
+        return;
+      }
+      maxAvailableStock = selectedColorForProduct.stock === undefined ? selectedProduct.stock : selectedColorForProduct.stock;
+    }
+
+    if (maxAvailableStock < quantity) {
+      setErrorMsg(`Insufficient stock. Only ${maxAvailableStock} left in stock.`);
       setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
 
     const gstPct = parseFloat(itemGstPercent) || 0;
 
-    // Check if product is already in cart with the same GST rate
-    const existingIndex = cart.findIndex(item => item.product.id === selectedProduct.id && item.gstPercent === gstPct);
+    // Check if product is already in cart with the same GST rate and color
+    const existingIndex = cart.findIndex(item => 
+      item.product.id === selectedProduct.id && 
+      item.gstPercent === gstPct &&
+      item.selectedColor?.name === selectedColorForProduct?.name
+    );
+
     if (existingIndex > -1) {
       const newQty = cart[existingIndex].quantity + quantity;
-      if (selectedProduct.stock < newQty) {
+      if (maxAvailableStock < newQty) {
         setErrorMsg(`Insufficient stock. Total cart quantity (${newQty}) exceeds available stock.`);
         setTimeout(() => setErrorMsg(''), 4000);
         return;
@@ -129,10 +157,16 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
       updated[existingIndex].quantity = newQty;
       setCart(updated);
     } else {
-      setCart([...cart, { product: selectedProduct, quantity, gstPercent: gstPct }]);
+      setCart([...cart, { 
+        product: selectedProduct, 
+        quantity, 
+        gstPercent: gstPct,
+        selectedColor: selectedColorForProduct || undefined
+      }]);
     }
 
     setSelectedProduct(null);
+    setSelectedColorForProduct(null);
     setItemGstPercent('');
   };
 
@@ -148,8 +182,12 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
       return;
     }
     const item = cart[index];
-    if (item.product.stock < newQty) {
-      setErrorMsg(`Only ${item.product.stock} items available in stock.`);
+    let maxAvailableStock = item.product.stock;
+    if (item.selectedColor) {
+      maxAvailableStock = item.selectedColor.stock === undefined ? item.product.stock : item.selectedColor.stock;
+    }
+    if (maxAvailableStock < newQty) {
+      setErrorMsg(`Only ${maxAvailableStock} items available in stock.`);
       setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
@@ -207,7 +245,10 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
   };
 
   // Calculations
-  const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+  const subtotal = cart.reduce((sum, item) => {
+    const itemPrice = item.selectedColor?.price !== undefined ? item.selectedColor.price : item.product.price;
+    return sum + (itemPrice * item.quantity);
+  }, 0);
   
   const discountVal = parseFloat(discountInput) || 0;
   const discountTotal = discountType === 'Flat' 
@@ -216,7 +257,8 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
 
   // Calculate per-item GST sum
   const gstVal = cart.reduce((sum, item) => {
-    const itemSubtotal = item.product.price * item.quantity;
+    const itemPrice = item.selectedColor?.price !== undefined ? item.selectedColor.price : item.product.price;
+    const itemSubtotal = itemPrice * item.quantity;
     return sum + (itemSubtotal * (item.gstPercent / 100));
   }, 0);
 
@@ -233,23 +275,45 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
     }
 
     try {
-      // 1. Decrement Stock in DB
+      // 1. Decrement Stock in DB (handling colors JSON array)
       for (const item of cart) {
-        const remainingStock = item.product.stock - item.quantity;
-        await supabase.from('products').update({ stock: remainingStock }).eq('id', item.product.id);
+        if (item.selectedColor && item.product.colors) {
+          const updatedColors = item.product.colors.map((color: any) => {
+            if (color.name === item.selectedColor?.name) {
+              return {
+                ...color,
+                stock: Math.max(0, (color.stock || 0) - item.quantity)
+              };
+            }
+            return color;
+          });
+          const totalStock = updatedColors.reduce((sum: number, c: any) => sum + (c.stock || 0), 0);
+          await supabase.from('products').update({ 
+            colors: updatedColors,
+            stock: totalStock 
+          }).eq('id', item.product.id);
+        } else {
+          const remainingStock = item.product.stock - item.quantity;
+          await supabase.from('products').update({ stock: remainingStock }).eq('id', item.product.id);
+        }
       }
 
       // 2. Prepare receipt items
-      const items = cart.map(item => ({
-        id: item.product.id,
-        name: item.product.name,
-        sku: item.product.sku,
-        price: item.product.price,
-        quantity: item.quantity,
-        subtotal: item.product.price * item.quantity,
-        gst_percent: item.gstPercent,
-        gst_amount: (item.product.price * item.quantity) * (item.gstPercent / 100)
-      }));
+      const items = cart.map(item => {
+        const itemPrice = item.selectedColor?.price !== undefined ? item.selectedColor.price : item.product.price;
+        return {
+          id: item.product.id,
+          name: item.product.name + (item.selectedColor ? ` (${item.selectedColor.name})` : ''),
+          sku: item.selectedColor?.sku || item.product.sku,
+          price: itemPrice,
+          quantity: item.quantity,
+          subtotal: itemPrice * item.quantity,
+          gst_percent: item.gstPercent,
+          gst_amount: (itemPrice * item.quantity) * (item.gstPercent / 100),
+          color_name: item.selectedColor?.name || null,
+          variant_sku: item.selectedColor?.sku || null
+        };
+      });
 
       // 3. Record transaction in database
       const transactionRecord = {
@@ -402,12 +466,47 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
                   {products.find(p => p.id === selectedProduct.id)?.category_id === 'cat-1' ? 'Accessories' : 'Product'}
                 </span>
                 <h3 className="text-base font-bold text-tk-text-primary mt-1">{selectedProduct.name}</h3>
-                <p className="text-2xs text-tk-text-secondary mt-0.5">SKU: {selectedProduct.sku} | Brand: {selectedProduct.brand || 'TEKART'}</p>
+                <p className="text-2xs text-tk-text-secondary mt-0.5">
+                  SKU: {selectedColorForProduct?.sku || selectedProduct.sku} | Brand: {selectedProduct.brand || 'TEKART'}
+                </p>
+                
+                {selectedProduct.colors && selectedProduct.colors.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <span className="text-[10px] font-bold text-tk-text-secondary uppercase tracking-wider block">
+                      Color Variant: <span className="text-tk-blue-bright">{selectedColorForProduct ? selectedColorForProduct.name : 'None Selected'}</span>
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedProduct.colors.map((color, idx) => {
+                        const isOutOfStock = color.stock !== undefined && color.stock <= 0;
+                        const isSelected = selectedColorForProduct?.name === color.name;
+                        return (
+                          <button
+                            key={idx}
+                            disabled={isOutOfStock}
+                            onClick={() => setSelectedColorForProduct(color)}
+                            className={`relative w-6 h-6 rounded-full border flex items-center justify-center p-0.5 transition-all ${
+                              isOutOfStock ? 'opacity-35 cursor-not-allowed border-dashed' : 'cursor-pointer hover:scale-105'
+                            } ${
+                              isSelected ? 'border-tk-blue-bright ring-2 ring-tk-blue-bright' : 'border-tk-border'
+                            }`}
+                            title={`${color.name}${isOutOfStock ? ' (Out of stock)' : ''}`}
+                          >
+                            <span className="w-full h-full rounded-full block border border-black/10" style={{ backgroundColor: color.hex }}></span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex items-center space-x-3.5 mt-2.5">
-                <span className="text-base font-extrabold text-tk-gold">₹{selectedProduct.price.toFixed(2)}</span>
-                <span className={`text-2xs font-semibold ${selectedProduct.stock > 5 ? 'text-green-500' : 'text-amber-500'}`}>
-                  Stock: {selectedProduct.stock} units
+                <span className="text-base font-extrabold text-tk-gold">
+                  ₹{(selectedColorForProduct?.price !== undefined ? selectedColorForProduct.price : selectedProduct.price).toFixed(2)}
+                </span>
+                <span className={`text-2xs font-semibold ${
+                  (selectedColorForProduct?.stock !== undefined ? selectedColorForProduct.stock : selectedProduct.stock) > 5 ? 'text-green-500' : 'text-amber-500'
+                }`}>
+                  Stock: {selectedColorForProduct?.stock !== undefined ? selectedColorForProduct.stock : selectedProduct.stock} units
                 </span>
               </div>
             </div>
@@ -493,37 +592,48 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
                   </tr>
                 </thead>
                 <tbody>
-                  {cart.map((item, idx) => (
-                    <tr key={`${item.product.id}-${item.gstPercent}`} className="border-b border-tk-border hover:bg-tk-blue-light/10">
-                      <td className="py-3 pr-2">
-                        <p className="font-semibold text-tk-text-primary text-xs">{item.product.name}</p>
-                        <p className="text-3xs text-tk-text-tertiary">SKU: {item.product.sku} {item.gstPercent > 0 && `| GST: ${item.gstPercent}%`}</p>
-                      </td>
-                      <td className="py-3 text-center text-tk-text-secondary">₹{item.product.price}</td>
-                      <td className="py-3 text-center">
-                        <div className="inline-flex items-center bg-tk-surface-2 border border-tk-border rounded-md">
+                  {cart.map((item, idx) => {
+                    const itemPrice = item.selectedColor?.price !== undefined ? item.selectedColor.price : item.product.price;
+                    return (
+                      <tr key={`${item.product.id}-${item.gstPercent}-${item.selectedColor?.name || 'none'}`} className="border-b border-tk-border hover:bg-tk-blue-light/10">
+                        <td className="py-3 pr-2">
+                          <p className="font-semibold text-tk-text-primary text-xs flex items-center flex-wrap gap-1">
+                            <span>{item.product.name}</span>
+                            {item.selectedColor && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tk-blue-light/35 dark:bg-tk-blue-light/10 text-tk-blue-bright text-[10px] font-bold border border-tk-blue-bright/20">
+                                <span className="w-1.5 h-1.5 rounded-full border border-black/10 shrink-0" style={{ backgroundColor: item.selectedColor.hex }}></span>
+                                {item.selectedColor.name}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-3xs text-tk-text-tertiary">SKU: {item.selectedColor?.sku || item.product.sku} {item.gstPercent > 0 && `| GST: ${item.gstPercent}%`}</p>
+                        </td>
+                        <td className="py-3 text-center text-tk-text-secondary">₹{itemPrice.toFixed(2)}</td>
+                        <td className="py-3 text-center">
+                          <div className="inline-flex items-center bg-tk-surface-2 border border-tk-border rounded-md">
+                            <button 
+                              onClick={() => updateCartQuantity(idx, item.quantity - 1)}
+                              className="px-1.5 py-0.5 text-xs hover:bg-tk-blue-light/30 text-tk-text-primary font-bold cursor-pointer"
+                            >-</button>
+                            <span className="px-2 font-bold text-tk-text-primary text-2xs">{item.quantity}</span>
+                            <button 
+                              onClick={() => updateCartQuantity(idx, item.quantity + 1)}
+                              className="px-1.5 py-0.5 text-xs hover:bg-tk-blue-light/30 text-tk-text-primary font-bold cursor-pointer"
+                            >+</button>
+                          </div>
+                        </td>
+                        <td className="py-3 text-right font-bold text-tk-text-primary">₹{(itemPrice * item.quantity).toFixed(2)}</td>
+                        <td className="py-3 text-right">
                           <button 
-                            onClick={() => updateCartQuantity(idx, item.quantity - 1)}
-                            className="px-1.5 py-0.5 text-xs hover:bg-tk-blue-light/30 text-tk-text-primary font-bold cursor-pointer"
-                          >-</button>
-                          <span className="px-2 font-bold text-tk-text-primary text-2xs">{item.quantity}</span>
-                          <button 
-                            onClick={() => updateCartQuantity(idx, item.quantity + 1)}
-                            className="px-1.5 py-0.5 text-xs hover:bg-tk-blue-light/30 text-tk-text-primary font-bold cursor-pointer"
-                          >+</button>
-                        </div>
-                      </td>
-                      <td className="py-3 text-right font-bold text-tk-text-primary">₹{(item.product.price * item.quantity).toFixed(2)}</td>
-                      <td className="py-3 text-right">
-                        <button 
-                          onClick={() => removeFromCart(idx)}
-                          className="text-red-500 hover:text-red-400 ml-2.5 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                            onClick={() => removeFromCart(idx)}
+                            className="text-red-500 hover:text-red-400 ml-2.5 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
