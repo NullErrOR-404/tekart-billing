@@ -973,8 +973,29 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                         <div>
                           <p className="font-semibold">{product.name}</p>
                           <p className="text-3xs text-tk-text-secondary">SKU: {product.sku}</p>
+                          {product.colors && product.colors.length > 0 && (
+                            <div className="flex items-center gap-1 mt-1">
+                              {product.colors.map((color, cIdx) => {
+                                const isSoldOut = color.stock !== undefined && color.stock <= 0;
+                                return (
+                                  <span
+                                    key={cIdx}
+                                    title={`${color.name} (Stock: ${color.stock ?? 0})`}
+                                    className="w-2.5 h-2.5 rounded-full border border-tk-border/50 block shadow-2xs shrink-0 relative"
+                                    style={{ backgroundColor: color.hex }}
+                                  >
+                                    {isSoldOut && (
+                                      <span className="absolute inset-0 flex items-center justify-center text-[7px] font-black text-red-600 leading-none select-none bg-black/10 rounded-full">
+                                        ×
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                        <span className="text-3xs text-tk-text-tertiary">Stock: {product.stock} units</span>
+                        <span className="text-3xs text-tk-text-tertiary font-semibold">Stock: {product.stock} units</span>
                       </button>
                     ))}
                   </div>
@@ -987,6 +1008,27 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                     <div>
                       <p className="font-bold">{selectedTransferProduct.name}</p>
                       <p className="text-3xs text-tk-text-secondary">SKU: {selectedTransferProduct.sku}</p>
+                      {selectedTransferProduct.colors && selectedTransferProduct.colors.length > 0 && (
+                        <div className="flex items-center gap-1 mt-1.5">
+                          {selectedTransferProduct.colors.map((color, cIdx) => {
+                            const isSoldOut = color.stock !== undefined && color.stock <= 0;
+                            return (
+                              <span
+                                key={cIdx}
+                                title={`${color.name} (Stock: ${color.stock ?? 0})`}
+                                className="w-3.5 h-3.5 rounded-full border border-tk-border/50 block shadow-2xs shrink-0 relative"
+                                style={{ backgroundColor: color.hex }}
+                              >
+                                {isSoldOut && (
+                                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-red-600 leading-none select-none bg-black/10 rounded-full">
+                                    ×
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     <p className="font-semibold">Available Stock: {selectedTransferProduct.stock} units</p>
                   </div>
@@ -1064,7 +1106,28 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                     <div>
                       <p className="font-semibold text-tk-text-primary text-xs">{p.name}</p>
                       <p className="text-3xs text-tk-text-secondary">SKU: {p.sku}</p>
-                      <p className="text-3xs text-red-500 font-bold mt-0.5">Stock Left: {p.stock} units</p>
+                      {p.colors && p.colors.length > 0 && (
+                        <div className="flex items-center gap-1 mt-1">
+                          {p.colors.map((color, cIdx) => {
+                            const isSoldOut = color.stock !== undefined && color.stock <= 0;
+                            return (
+                              <span
+                                key={cIdx}
+                                title={`${color.name} (Stock: ${color.stock ?? 0})`}
+                                className="w-2.5 h-2.5 rounded-full border border-tk-border/50 block shadow-2xs shrink-0 relative"
+                                style={{ backgroundColor: color.hex }}
+                              >
+                                {isSoldOut && (
+                                  <span className="absolute inset-0 flex items-center justify-center text-[7px] font-black text-red-600 leading-none select-none bg-black/10 rounded-full">
+                                    ×
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <p className="text-3xs text-red-500 font-bold mt-1">Stock Left: {p.stock} units</p>
                     </div>
                   </div>
 

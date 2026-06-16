@@ -434,6 +434,27 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-tk-text-primary truncate">{product.name}</p>
                     <p className="text-2xs text-tk-text-secondary">SKU: {product.sku} | Price: ₹{product.price}</p>
+                    {product.colors && product.colors.length > 0 && (
+                      <div className="flex items-center gap-1 mt-1">
+                        {product.colors.map((color: any, cIdx: number) => {
+                          const isSoldOut = color.stock !== undefined && color.stock <= 0;
+                          return (
+                            <span
+                              key={cIdx}
+                              title={`${color.name} (Stock: ${color.stock ?? 0})`}
+                              className="w-3 h-3 rounded-full border border-tk-border/50 block shadow-2xs shrink-0 relative"
+                              style={{ backgroundColor: color.hex }}
+                            >
+                              {isSoldOut && (
+                                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-black text-red-600 leading-none select-none bg-black/10 rounded-full">
+                                  ×
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <span className={`text-2xs px-2 py-0.5 rounded-full font-semibold ${
@@ -484,6 +505,7 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
                             key={idx}
                             disabled={isOutOfStock}
                             onClick={() => setSelectedColorForProduct(color)}
+                            onMouseEnter={() => !isOutOfStock && setSelectedColorForProduct(color)}
                             className={`relative w-6 h-6 rounded-full border flex items-center justify-center p-0.5 transition-all ${
                               isOutOfStock ? 'opacity-35 cursor-not-allowed border-dashed' : 'cursor-pointer hover:scale-105'
                             } ${
