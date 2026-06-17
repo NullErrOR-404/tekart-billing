@@ -743,9 +743,9 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                             Archived / Hidden
                           </span>
                         )}
-                        {p.colors && p.colors.length > 0 && (
+                        {p.variants && p.variants.length > 0 && (
                           <div className="flex items-center gap-1 mt-1">
-                            {p.colors.map((color, cIdx) => {
+                            {p.variants.map((color, cIdx) => {
                               const isSoldOut = color.stock !== undefined && color.stock <= 0;
                               return (
                                 <div 
@@ -973,9 +973,9 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                         <div>
                           <p className="font-semibold">{product.name}</p>
                           <p className="text-3xs text-tk-text-secondary">SKU: {product.sku}</p>
-                          {product.colors && product.colors.length > 0 && (
+                          {product.variants && product.variants.length > 0 && (
                             <div className="flex items-center gap-1 mt-1">
-                              {product.colors.map((color, cIdx) => {
+                              {product.variants.map((color, cIdx) => {
                                 const isSoldOut = color.stock !== undefined && color.stock <= 0;
                                 return (
                                   <span
@@ -1008,9 +1008,9 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                     <div>
                       <p className="font-bold">{selectedTransferProduct.name}</p>
                       <p className="text-3xs text-tk-text-secondary">SKU: {selectedTransferProduct.sku}</p>
-                      {selectedTransferProduct.colors && selectedTransferProduct.colors.length > 0 && (
+                      {selectedTransferProduct.variants && selectedTransferProduct.variants.length > 0 && (
                         <div className="flex items-center gap-1 mt-1.5">
-                          {selectedTransferProduct.colors.map((color, cIdx) => {
+                          {selectedTransferProduct.variants.map((color, cIdx) => {
                             const isSoldOut = color.stock !== undefined && color.stock <= 0;
                             return (
                               <span
@@ -1106,9 +1106,9 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                     <div>
                       <p className="font-semibold text-tk-text-primary text-xs">{p.name}</p>
                       <p className="text-3xs text-tk-text-secondary">SKU: {p.sku}</p>
-                      {p.colors && p.colors.length > 0 && (
+                      {p.variants && p.variants.length > 0 && (
                         <div className="flex items-center gap-1 mt-1">
-                          {p.colors.map((color, cIdx) => {
+                          {p.variants.map((color, cIdx) => {
                             const isSoldOut = color.stock !== undefined && color.stock <= 0;
                             return (
                               <span

@@ -21,8 +21,8 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
   const [itemGstPercent, setItemGstPercent] = useState<string>('');
   
   // Cart state
-  const [cart, setCart] = useState<{ product: Product; quantity: number; gstPercent: number; selectedColor?: any }[]>([]);
-  const [selectedColorForProduct, setSelectedColorForProduct] = useState<any | null>(null);
+  const [cart, setCart] = useState<{ product: Product; quantity: number; gstPercent: number; selectedVariant?: any }[]>([]);
+  const [selectedVariantForProduct, setselectedVariantForProduct] = useState<any | null>(null);
   
   // Customer state
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -105,15 +105,15 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
     setQuantity(1);
     
     // Auto-select first in-stock color option if present
-    if (product.colors && product.colors.length > 0) {
-      const inStockColors = product.colors.filter(c => c.stock === undefined || c.stock > 0);
-      if (inStockColors.length > 0) {
-        setSelectedColorForProduct(inStockColors[0]);
+    if (product.variants && product.variants.length > 0) {
+      const inStockVariants = product.variants.filter(c => c.stock === undefined || c.stock > 0);
+      if (inStockVariants.length > 0) {
+        setselectedVariantForProduct(inStockVariants[0]);
       } else {
-        setSelectedColorForProduct(null);
+        setselectedVariantForProduct(null);
       }
     } else {
-      setSelectedColorForProduct(null);
+      setselectedVariantForProduct(null);
     }
   };
 
@@ -122,13 +122,13 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
     if (quantity <= 0) return;
 
     let maxAvailableStock = selectedProduct.stock;
-    if (selectedProduct.colors && selectedProduct.colors.length > 0) {
-      if (!selectedColorForProduct) {
+    if (selectedProduct.variants && selectedProduct.variants.length > 0) {
+      if (!selectedVariantForProduct) {
         setErrorMsg('Please select a color variant.');
         setTimeout(() => setErrorMsg(''), 4000);
         return;
       }
-      maxAvailableStock = selectedColorForProduct.stock === undefined ? selectedProduct.stock : selectedColorForProduct.stock;
+      maxAvailableStock = selectedVariantForProduct.stock === undefined ? selectedProduct.stock : selectedVariantForProduct.stock;
     }
 
     if (maxAvailableStock < quantity) {
@@ -143,7 +143,7 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
     const existingIndex = cart.findIndex(item => 
       item.product.id === selectedProduct.id && 
       item.gstPercent === gstPct &&
-      item.selectedColor?.name === selectedColorForProduct?.name
+      item.selectedVariant?.name === selectedVariantForProduct?.name
     );
 
     if (existingIndex > -1) {
@@ -161,12 +161,12 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
         product: selectedProduct, 
         quantity, 
         gstPercent: gstPct,
-        selectedColor: selectedColorForProduct || undefined
+        selectedVariant: selectedVariantForProduct || undefined
       }]);
     }
 
     setSelectedProduct(null);
-    setSelectedColorForProduct(null);
+    setselectedVariantForProduct(null);
     setItemGstPercent('');
   };
 
@@ -183,8 +183,8 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
     }
     const item = cart[index];
     let maxAvailableStock = item.product.stock;
-    if (item.selectedColor) {
-      maxAvailableStock = item.selectedColor.stock === undefined ? item.product.stock : item.selectedColor.stock;
+    if (item.selectedVariant) {
+      maxAvailableStock = item.selectedVariant.stock === undefined ? item.product.stock : item.selectedVariant.stock;
     }
     if (maxAvailableStock < newQty) {
       setErrorMsg(`Only ${maxAvailableStock} items available in stock.`);
@@ -246,7 +246,7 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
 
   // Calculations
   const subtotal = cart.reduce((sum, item) => {
-    const itemPrice = item.selectedColor?.price !== undefined ? item.selectedColor.price : item.product.price;
+    const itemPrice = item.selectedVariant?.price !== undefined ? item.selectedVariant.price : item.product.price;
     return sum + (itemPrice * item.quantity);
   }, 0);
   
@@ -257,7 +257,7 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
 
   // Calculate per-item GST sum
   const gstVal = cart.reduce((sum, item) => {
-    const itemPrice = item.selectedColor?.price !== undefined ? item.selectedColor.price : item.product.price;
+    const itemPrice = item.selectedVariant?.price !== undefined ? item.selectedVariant.price : item.product.price;
     const itemSubtotal = itemPrice * item.quantity;
     return sum + (itemSubtotal * (item.gstPercent / 100));
   }, 0);
@@ -277,9 +277,9 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
     try {
       // 1. Decrement Stock in DB (handling colors JSON array)
       for (const item of cart) {
-        if (item.selectedColor && item.product.colors) {
-          const updatedColors = item.product.colors.map((color: any) => {
-            if (color.name === item.selectedColor?.name) {
+        if (item.selectedVariant && item.product.variants) {
+          const updatedVariants = item.product.variants.map((color: any) => {
+            if (color.name === item.selectedVariant?.name) {
               return {
                 ...color,
                 stock: Math.max(0, (color.stock || 0) - item.quantity)
@@ -287,9 +287,9 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
             }
             return color;
           });
-          const totalStock = updatedColors.reduce((sum: number, c: any) => sum + (c.stock || 0), 0);
+          const totalStock = updatedVariants.reduce((sum: number, c: any) => sum + (c.stock || 0), 0);
           await supabase.from('products').update({ 
-            colors: updatedColors,
+            variants: updatedVariants,
             stock: totalStock 
           }).eq('id', item.product.id);
         } else {
@@ -300,18 +300,18 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
 
       // 2. Prepare receipt items
       const items = cart.map(item => {
-        const itemPrice = item.selectedColor?.price !== undefined ? item.selectedColor.price : item.product.price;
+        const itemPrice = item.selectedVariant?.price !== undefined ? item.selectedVariant.price : item.product.price;
         return {
           id: item.product.id,
-          name: item.product.name + (item.selectedColor ? ` (${item.selectedColor.name})` : ''),
-          sku: item.selectedColor?.sku || item.product.sku,
+          name: item.product.name + (item.selectedVariant ? ` (${item.selectedVariant.name})` : ''),
+          sku: item.selectedVariant?.sku || item.product.sku,
           price: itemPrice,
           quantity: item.quantity,
           subtotal: itemPrice * item.quantity,
           gst_percent: item.gstPercent,
           gst_amount: (itemPrice * item.quantity) * (item.gstPercent / 100),
-          color_name: item.selectedColor?.name || null,
-          variant_sku: item.selectedColor?.sku || null
+          color_name: item.selectedVariant?.name || null,
+          variant_sku: item.selectedVariant?.sku || null
         };
       });
 
@@ -434,9 +434,9 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-tk-text-primary truncate">{product.name}</p>
                     <p className="text-2xs text-tk-text-secondary">SKU: {product.sku} | Price: ₹{product.price}</p>
-                    {product.colors && product.colors.length > 0 && (
+                    {product.variants && product.variants.length > 0 && (
                       <div className="flex items-center gap-1 mt-1">
-                        {product.colors.map((color: any, cIdx: number) => {
+                        {product.variants.map((color: any, cIdx: number) => {
                           const isSoldOut = color.stock !== undefined && color.stock <= 0;
                           return (
                             <span
@@ -476,7 +476,7 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
           <div className="bg-tk-surface border border-tk-border p-4 rounded-2xl tk-glass grid grid-cols-1 md:grid-cols-12 gap-4">
             <div className="md:col-span-3">
               <img 
-                src={selectedColorForProduct?.image_url || selectedProduct.cover_image} 
+                src={selectedVariantForProduct?.image_url || selectedProduct.cover_image} 
                 alt={selectedProduct.name} 
                 className="w-full h-24 object-cover rounded-lg border border-tk-border bg-tk-surface-2"
               />
@@ -488,24 +488,24 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
                 </span>
                 <h3 className="text-base font-bold text-tk-text-primary mt-1">{selectedProduct.name}</h3>
                 <p className="text-2xs text-tk-text-secondary mt-0.5">
-                  SKU: {selectedColorForProduct?.sku || selectedProduct.sku} | Brand: {selectedProduct.brand || 'TEKART'}
+                  SKU: {selectedVariantForProduct?.sku || selectedProduct.sku} | Brand: {selectedProduct.brand || 'TEKART'}
                 </p>
                 
-                {selectedProduct.colors && selectedProduct.colors.length > 0 && (
+                {selectedProduct.variants && selectedProduct.variants.length > 0 && (
                   <div className="mt-2 space-y-1">
                     <span className="text-[10px] font-bold text-tk-text-secondary uppercase tracking-wider block">
-                      Color Variant: <span className="text-tk-blue-bright">{selectedColorForProduct ? selectedColorForProduct.name : 'None Selected'}</span>
+                      Color Variant: <span className="text-tk-blue-bright">{selectedVariantForProduct ? selectedVariantForProduct.name : 'None Selected'}</span>
                     </span>
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedProduct.colors.map((color, idx) => {
+                      {selectedProduct.variants.map((color, idx) => {
                         const isOutOfStock = color.stock !== undefined && color.stock <= 0;
-                        const isSelected = selectedColorForProduct?.name === color.name;
+                        const isSelected = selectedVariantForProduct?.name === color.name;
                         return (
                           <button
                             key={idx}
                             disabled={isOutOfStock}
-                            onClick={() => setSelectedColorForProduct(color)}
-                            onMouseEnter={() => !isOutOfStock && setSelectedColorForProduct(color)}
+                            onClick={() => setselectedVariantForProduct(color)}
+                            onMouseEnter={() => !isOutOfStock && setselectedVariantForProduct(color)}
                             className={`relative w-6 h-6 rounded-full border flex items-center justify-center p-0.5 transition-all ${
                               isOutOfStock ? 'opacity-35 cursor-not-allowed border-dashed' : 'cursor-pointer hover:scale-105'
                             } ${
@@ -523,12 +523,12 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
               </div>
               <div className="flex items-center space-x-3.5 mt-2.5">
                 <span className="text-base font-extrabold text-tk-gold">
-                  ₹{(selectedColorForProduct?.price !== undefined ? selectedColorForProduct.price : selectedProduct.price).toFixed(2)}
+                  ₹{(selectedVariantForProduct?.price !== undefined ? selectedVariantForProduct.price : selectedProduct.price).toFixed(2)}
                 </span>
                 <span className={`text-2xs font-semibold ${
-                  (selectedColorForProduct?.stock !== undefined ? selectedColorForProduct.stock : selectedProduct.stock) > 5 ? 'text-green-500' : 'text-amber-500'
+                  (selectedVariantForProduct?.stock !== undefined ? selectedVariantForProduct.stock : selectedProduct.stock) > 5 ? 'text-green-500' : 'text-amber-500'
                 }`}>
-                  Stock: {selectedColorForProduct?.stock !== undefined ? selectedColorForProduct.stock : selectedProduct.stock} units
+                  Stock: {selectedVariantForProduct?.stock !== undefined ? selectedVariantForProduct.stock : selectedProduct.stock} units
                 </span>
               </div>
             </div>
@@ -615,20 +615,20 @@ export default function POS({ cashierName, isCashierRole, cashierPermissions }: 
                 </thead>
                 <tbody>
                   {cart.map((item, idx) => {
-                    const itemPrice = item.selectedColor?.price !== undefined ? item.selectedColor.price : item.product.price;
+                    const itemPrice = item.selectedVariant?.price !== undefined ? item.selectedVariant.price : item.product.price;
                     return (
-                      <tr key={`${item.product.id}-${item.gstPercent}-${item.selectedColor?.name || 'none'}`} className="border-b border-tk-border hover:bg-tk-blue-light/10">
+                      <tr key={`${item.product.id}-${item.gstPercent}-${item.selectedVariant?.name || 'none'}`} className="border-b border-tk-border hover:bg-tk-blue-light/10">
                         <td className="py-3 pr-2">
                           <p className="font-semibold text-tk-text-primary text-xs flex items-center flex-wrap gap-1">
                             <span>{item.product.name}</span>
-                            {item.selectedColor && (
+                            {item.selectedVariant && (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tk-blue-light/35 dark:bg-tk-blue-light/10 text-tk-blue-bright text-[10px] font-bold border border-tk-blue-bright/20">
-                                <span className="w-1.5 h-1.5 rounded-full border border-black/10 shrink-0" style={{ backgroundColor: item.selectedColor.hex }}></span>
-                                {item.selectedColor.name}
+                                <span className="w-1.5 h-1.5 rounded-full border border-black/10 shrink-0" style={{ backgroundColor: item.selectedVariant.hex }}></span>
+                                {item.selectedVariant.name}
                               </span>
                             )}
                           </p>
-                          <p className="text-3xs text-tk-text-tertiary">SKU: {item.selectedColor?.sku || item.product.sku} {item.gstPercent > 0 && `| GST: ${item.gstPercent}%`}</p>
+                          <p className="text-3xs text-tk-text-tertiary">SKU: {item.selectedVariant?.sku || item.product.sku} {item.gstPercent > 0 && `| GST: ${item.gstPercent}%`}</p>
                         </td>
                         <td className="py-3 text-center text-tk-text-secondary">₹{itemPrice.toFixed(2)}</td>
                         <td className="py-3 text-center">

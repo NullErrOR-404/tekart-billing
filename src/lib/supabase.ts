@@ -26,9 +26,10 @@ export interface Category {
   created_at: string;
 }
 
-export interface ProductColor {
+export interface ProductVariant {
+  type?: string; // "color" | "size" | "volume" | "capacity" | "weight"
   name: string;
-  hex: string;
+  hex?: string;
   image_url?: string;
   price?: number;
   sku?: string;
@@ -39,6 +40,9 @@ export interface ProductColor {
   seo_title?: string;
   seo_description?: string;
 }
+
+/** @deprecated Use ProductVariant instead */
+export type ProductColor = ProductVariant;
 
 export interface Product {
   id: string;
@@ -60,7 +64,8 @@ export interface Product {
   cover_image: string;
   tags: string[];
   priority: number;
-  colors?: ProductColor[];
+  variants?: ProductVariant[];
+  variant_type?: string;
   created_at: string;
   updated_at: string;
 }
