@@ -49,6 +49,41 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
   const [nameSuggestions, setNameSuggestions] = useState<Product[]>([]);
   const [showNameDropdown, setShowNameDropdown] = useState(false);
 
+  // Variant specific state variables
+  const [newProdHasVariants, setNewProdHasVariants] = useState(false);
+  const [newProdVariantType, setNewProdVariantType] = useState('color');
+  const [newProdVariants, setNewProdVariants] = useState<{
+    name: string;
+    sku: string;
+    buying_price: string;
+    price: string;
+    stock: string;
+    hex?: string;
+  }[]>([]);
+  const [selectedRestockVariant, setSelectedRestockVariant] = useState<any | null>(null);
+
+  const addVariantRow = () => {
+    setNewProdVariants([
+      ...newProdVariants,
+      { name: '', sku: '', buying_price: '0', price: '0', stock: '1', hex: '#3b82f6' }
+    ]);
+  };
+
+  const removeVariantRow = (index: number) => {
+    const updated = [...newProdVariants];
+    updated.splice(index, 1);
+    setNewProdVariants(updated);
+  };
+
+  const updateVariantRow = (index: number, field: string, value: string) => {
+    const updated = [...newProdVariants];
+    updated[index] = {
+      ...updated[index],
+      [field]: value
+    };
+    setNewProdVariants(updated);
+  };
+
   // Inline Stock Edit states
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editingStockVal, setEditingStockVal] = useState<string>('');
@@ -105,6 +140,7 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
       setNewProdCat(existing.category_id);
       setNewProdBuyPrice((existing.buying_price || existing.price * 0.5).toString());
       setNewProdPrice(existing.price.toString());
+      setSelectedRestockVariant(null);
     }
   }, [newProdSku, products]);
 
@@ -135,6 +171,7 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
       setNewProdCat(exactMatch.category_id);
       setNewProdBuyPrice((exactMatch.buying_price || exactMatch.price * 0.5).toString());
       setNewProdPrice(exactMatch.price.toString());
+      setSelectedRestockVariant(null);
     }
   }, [newProdName, products]);
 
@@ -238,31 +275,72 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
     try {
       const existing = products.find(p => p.sku.toLowerCase() === skuTrimmed.toLowerCase());
       if (existing) {
-        const newStock = existing.stock + qty;
-        const updates: any = {
-          stock: newStock
-        };
+        // Restocking existing product
+        if (existing.variants && existing.variants.length > 0) {
+          if (!selectedRestockVariant) {
+            setErrorMsg('Please select a variant to restock.');
+            setTimeout(() => setErrorMsg(''), 4000);
+            return;
+          }
 
-        if (newProdName.trim() && newProdName !== existing.name) {
-          updates.name = newProdName.trim();
-        }
-        if (newProdCat && newProdCat !== existing.category_id) {
-          updates.category_id = newProdCat;
-        }
-        const bPrice = parseFloat(newProdBuyPrice) || 0;
-        if (bPrice > 0 && bPrice !== existing.buying_price) {
-          updates.buying_price = bPrice;
-        }
-        const sPrice = parseFloat(newProdPrice) || 0;
-        if (sPrice > 0 && sPrice !== existing.price) {
-          updates.price = sPrice;
-        }
+          const updatedVariants = existing.variants.map((v: any) => {
+            if (v.name === selectedRestockVariant.name) {
+              return {
+                ...v,
+                stock: (v.stock || 0) + qty,
+                price: parseFloat(newProdPrice) || v.price || existing.price,
+                buying_price: parseFloat(newProdBuyPrice) || v.buying_price || existing.buying_price
+              };
+            }
+            return v;
+          });
 
-        const { error } = await supabase.from('products').update(updates).eq('id', existing.id);
-        if (error) throw error;
+          const totalStock = updatedVariants.reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
+          
+          const updates: any = {
+            variants: updatedVariants,
+            stock: totalStock
+          };
+          if (newProdName.trim() && newProdName !== existing.name) {
+            updates.name = newProdName.trim();
+          }
+          if (newProdCat && newProdCat !== existing.category_id) {
+            updates.category_id = newProdCat;
+          }
 
-        setSuccessMsg(`Updated stock for ${existing.name}. New stock: ${newStock} units.`);
+          const { error } = await supabase.from('products').update(updates).eq('id', existing.id);
+          if (error) throw error;
+
+          setSuccessMsg(`Updated stock for ${existing.name} (${selectedRestockVariant.name}). New variant stock: ${(selectedRestockVariant.stock || 0) + qty} units.`);
+        } else {
+          // No variants
+          const newStock = existing.stock + qty;
+          const updates: any = {
+            stock: newStock
+          };
+
+          if (newProdName.trim() && newProdName !== existing.name) {
+            updates.name = newProdName.trim();
+          }
+          if (newProdCat && newProdCat !== existing.category_id) {
+            updates.category_id = newProdCat;
+          }
+          const bPrice = parseFloat(newProdBuyPrice) || 0;
+          if (bPrice > 0 && bPrice !== existing.buying_price) {
+            updates.buying_price = bPrice;
+          }
+          const sPrice = parseFloat(newProdPrice) || 0;
+          if (sPrice > 0 && sPrice !== existing.price) {
+            updates.price = sPrice;
+          }
+
+          const { error } = await supabase.from('products').update(updates).eq('id', existing.id);
+          if (error) throw error;
+
+          setSuccessMsg(`Updated stock for ${existing.name}. New stock: ${newStock} units.`);
+        }
       } else {
+        // Creating completely new product
         if (!newProdName.trim()) {
           setErrorMsg('Product name is required for new items.');
           setTimeout(() => setErrorMsg(''), 4000);
@@ -281,20 +359,63 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/(^-|-$)+/g, '');
 
-        const newProduct = {
-          sku: skuTrimmed,
+        let newProduct: any = {
           name: newProdName.trim(),
-          slug,
           category_id: newProdCat,
-          buying_price: bPrice || Math.round(sPrice * 0.5),
-          price: sPrice,
-          stock: qty,
           featured: false,
           cover_image: 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=800&auto=format&fit=crop&q=80',
           gallery: [],
           tags: ['archived'],
           priority: 0
         };
+
+        if (newProdHasVariants) {
+          if (newProdVariants.length === 0) {
+            setErrorMsg('Please add at least one variant.');
+            setTimeout(() => setErrorMsg(''), 4000);
+            return;
+          }
+
+          const variantsPayload = newProdVariants.map((v) => {
+            const varCost = parseFloat(v.buying_price) || 0;
+            const varPrice = parseFloat(v.price) || 0;
+            const varStock = parseInt(v.stock) || 0;
+            const varSlug = `${slug}-${v.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+            return {
+              type: newProdVariantType,
+              name: v.name.trim(),
+              sku: v.sku.trim() || `${newProdName.split(' ').map(w => w[0]).join('').toUpperCase()}-${v.name.toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+              buying_price: varCost,
+              price: varPrice,
+              stock: varStock,
+              slug: varSlug,
+              ...(newProdVariantType === 'color' ? { hex: v.hex } : {})
+            };
+          });
+
+          const totalStock = variantsPayload.reduce((sum, v) => sum + v.stock, 0);
+          const firstVar = variantsPayload[0];
+
+          newProduct = {
+            ...newProduct,
+            sku: firstVar.sku,
+            slug,
+            buying_price: firstVar.buying_price || bPrice || Math.round(firstVar.price * 0.5),
+            price: firstVar.price || sPrice,
+            stock: totalStock,
+            variants: variantsPayload,
+            variant_type: newProdVariantType
+          };
+        } else {
+          newProduct = {
+            ...newProduct,
+            sku: skuTrimmed,
+            slug,
+            buying_price: bPrice || Math.round(sPrice * 0.5),
+            price: sPrice,
+            stock: qty
+          };
+        }
 
         const { error } = await supabase.from('products').insert([newProduct]);
         if (error) throw error;
@@ -308,6 +429,9 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
       setNewProdBuyPrice('0');
       setNewProdPrice('0');
       setNewProdStock('0');
+      setNewProdHasVariants(false);
+      setNewProdVariants([]);
+      setSelectedRestockVariant(null);
       setShowAddProduct(false);
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchProducts();
@@ -613,6 +737,7 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                             setNewProdBuyPrice((prod.buying_price || prod.price * 0.5).toString());
                             setNewProdPrice(prod.price.toString());
                             setShowNameDropdown(false);
+                            setSelectedRestockVariant(null);
                           }}
                           className="w-full p-2 text-left border-b border-tk-border hover:bg-tk-blue-light/10 dark:hover:bg-tk-surface-2 transition-colors text-xs flex items-center justify-between text-tk-text-primary cursor-pointer"
                         >
@@ -644,50 +769,244 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                   </select>
                 </div>
 
-                <div>
-                  <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Quantity to Add</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={newProdStock}
-                    onChange={(e) => setNewProdStock(e.target.value)}
-                    className="w-full bg-tk-surface-2 border border-tk-border rounded-lg p-2 text-xs text-tk-text-primary focus:outline-none font-bold text-center"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {isAdmin && (
+                {(!newProdHasVariants || products.some(p => p.sku.trim().toLowerCase() === newProdSku.trim().toLowerCase())) && (
                   <div>
-                    <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Wholesale Buying Price (₹)</label>
+                    <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Quantity to Add</label>
                     <input
-                      type="text"
-                      value={newProdBuyPrice}
-                      onChange={(e) => setNewProdBuyPrice(e.target.value)}
-                      className="w-full bg-tk-surface-2 border border-tk-border rounded-lg p-2 text-xs text-tk-text-primary focus:outline-none"
+                      type="number"
+                      min="0"
+                      value={newProdStock}
+                      onChange={(e) => setNewProdStock(e.target.value)}
+                      className="w-full bg-tk-surface-2 border border-tk-border rounded-lg p-2 text-xs text-tk-text-primary focus:outline-none font-bold text-center"
                     />
                   </div>
                 )}
+              </div>
 
-                <div>
-                  <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Retail Selling Price (₹)</label>
-                  <input
-                    type="text"
-                    value={newProdPrice}
-                    onChange={(e) => setNewProdPrice(e.target.value)}
-                    className="w-full bg-tk-surface-2 border border-tk-border rounded-lg p-2 text-xs text-tk-text-primary focus:outline-none"
-                  />
+              {/* Matched product variants select field */}
+              {(() => {
+                const existingProduct = products.find(p => p.sku.trim().toLowerCase() === newProdSku.trim().toLowerCase());
+                if (existingProduct && existingProduct.variants && existingProduct.variants.length > 0) {
+                  return (
+                    <div className="md:col-span-4">
+                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Select Variant to Restock *</label>
+                      <select
+                        value={selectedRestockVariant ? selectedRestockVariant.name : ''}
+                        onChange={(e) => {
+                          const variant = existingProduct.variants?.find(v => v.name === e.target.value);
+                          setSelectedRestockVariant(variant || null);
+                          if (variant) {
+                            setNewProdBuyPrice((variant.buying_price || existingProduct.buying_price || (variant.price || existingProduct.price) * 0.5).toString());
+                            setNewProdPrice((variant.price || existingProduct.price).toString());
+                          } else {
+                            setNewProdBuyPrice('0');
+                            setNewProdPrice('0');
+                          }
+                        }}
+                        className="w-full bg-tk-surface-2 border border-tk-border rounded-lg p-2 text-xs text-tk-text-primary focus:outline-none"
+                      >
+                        <option value="">-- Choose Variant --</option>
+                        {existingProduct.variants.map((v) => (
+                          <option key={v.name} value={v.name} className="bg-tk-surface">
+                            {v.name} (Current Stock: {v.stock ?? 0}, SKU: {v.sku || '—'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Check if SKU is NOT existing product and show variant builder */}
+              {(() => {
+                const existingProduct = products.find(p => p.sku.trim().toLowerCase() === newProdSku.trim().toLowerCase());
+                if (!existingProduct) {
+                  return (
+                    <div className="md:col-span-4 space-y-4">
+                      <div className="flex items-center space-x-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="newProdHasVariants"
+                          checked={newProdHasVariants}
+                          onChange={(e) => {
+                            setNewProdHasVariants(e.target.checked);
+                            if (e.target.checked && newProdVariants.length === 0) {
+                              addVariantRow();
+                            }
+                          }}
+                          className="rounded border-tk-border bg-tk-surface-2 text-tk-blue-mid focus:ring-tk-blue-mid w-4 h-4 cursor-pointer"
+                        />
+                        <label htmlFor="newProdHasVariants" className="text-xs font-semibold text-tk-text-primary cursor-pointer select-none">
+                          This product has multiple variants (e.g. Size, Color, Capacity)
+                        </label>
+                      </div>
+
+                      {newProdHasVariants && (
+                        <div className="border border-tk-border rounded-xl p-4 bg-tk-surface-2 space-y-3">
+                          <div className="flex items-center justify-between border-b border-tk-border pb-2">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-2xs font-bold text-tk-text-primary">Variant Type:</span>
+                              <select
+                                value={newProdVariantType}
+                                onChange={(e) => setNewProdVariantType(e.target.value)}
+                                className="bg-tk-surface border border-tk-border rounded px-2 py-1 text-xs text-tk-text-primary focus:outline-none"
+                              >
+                                <option value="color">Color</option>
+                                <option value="size">Size</option>
+                                <option value="volume">Volume</option>
+                                <option value="capacity">Capacity</option>
+                                <option value="weight">Weight</option>
+                              </select>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={addVariantRow}
+                              className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-3xs py-1 px-3 rounded-lg cursor-pointer"
+                            >
+                              + Add Variant Row
+                            </button>
+                          </div>
+
+                          <div className="overflow-x-auto overflow-y-hidden">
+                            <table className="w-full text-left text-3xs border-collapse min-w-[450px]">
+                              <thead>
+                                <tr className="border-b border-tk-border text-tk-text-secondary">
+                                  <th className="pb-1.5 font-bold">Variant Name *</th>
+                                  <th className="pb-1.5 font-bold">SKU (Optional)</th>
+                                  <th className="pb-1.5 font-bold text-center">Cost (₹)</th>
+                                  <th className="pb-1.5 font-bold text-center">Retail (₹)</th>
+                                  <th className="pb-1.5 font-bold text-center">Qty</th>
+                                  {newProdVariantType === 'color' && <th className="pb-1.5 font-bold text-center">Color Hex</th>}
+                                  <th className="pb-1.5 text-center"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {newProdVariants.map((v, index) => (
+                                  <tr key={index} className="border-b border-tk-border/50">
+                                    <td className="py-1.5">
+                                      <input
+                                        type="text"
+                                        placeholder="e.g. Red, XL"
+                                        value={v.name}
+                                        onChange={(e) => updateVariantRow(index, 'name', e.target.value)}
+                                        className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-24"
+                                      />
+                                    </td>
+                                    <td className="py-1.5">
+                                      <input
+                                        type="text"
+                                        placeholder="Auto-gen"
+                                        value={v.sku}
+                                        onChange={(e) => updateVariantRow(index, 'sku', e.target.value)}
+                                        className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-24 font-mono"
+                                      />
+                                    </td>
+                                    <td className="py-1.5 text-center">
+                                      <input
+                                        type="text"
+                                        value={v.buying_price}
+                                        onChange={(e) => updateVariantRow(index, 'buying_price', e.target.value)}
+                                        className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-12 text-center"
+                                      />
+                                    </td>
+                                    <td className="py-1.5 text-center">
+                                      <input
+                                        type="text"
+                                        value={v.price}
+                                        onChange={(e) => updateVariantRow(index, 'price', e.target.value)}
+                                        className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-12 text-center"
+                                      />
+                                    </td>
+                                    <td className="py-1.5 text-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={v.stock}
+                                        onChange={(e) => updateVariantRow(index, 'stock', e.target.value)}
+                                        className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-10 text-center font-bold"
+                                      />
+                                    </td>
+                                    {newProdVariantType === 'color' && (
+                                      <td className="py-1.5 text-center">
+                                        <div className="flex items-center justify-center space-x-1">
+                                          <input
+                                            type="color"
+                                            value={v.hex || '#3b82f6'}
+                                            onChange={(e) => updateVariantRow(index, 'hex', e.target.value)}
+                                            className="w-5 h-5 border-0 rounded cursor-pointer p-0 bg-transparent"
+                                          />
+                                          <span className="font-mono text-[9px] text-tk-text-secondary">{v.hex || '#3b82f6'}</span>
+                                        </div>
+                                      </td>
+                                    )}
+                                    <td className="py-1.5 text-center">
+                                      {newProdVariants.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeVariantRow(index)}
+                                          className="text-red-500 hover:text-red-400"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {(!newProdHasVariants || products.some(p => p.sku.trim().toLowerCase() === newProdSku.trim().toLowerCase())) ? (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {isAdmin && (
+                    <div>
+                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Wholesale Buying Price (₹)</label>
+                      <input
+                        type="text"
+                        value={newProdBuyPrice}
+                        onChange={(e) => setNewProdBuyPrice(e.target.value)}
+                        className="w-full bg-tk-surface-2 border border-tk-border rounded-lg p-2 text-xs text-tk-text-primary focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Retail Selling Price (₹)</label>
+                    <input
+                      type="text"
+                      value={newProdPrice}
+                      onChange={(e) => setNewProdPrice(e.target.value)}
+                      className="w-full bg-tk-surface-2 border border-tk-border rounded-lg p-2 text-xs text-tk-text-primary focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2 flex items-end">
+                    <button
+                      onClick={handleSaveProduct}
+                      className="w-full bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2.5 rounded-lg cursor-pointer transition-colors"
+                    >
+                      {products.find(p => p.sku.trim().toLowerCase() === newProdSku.trim().toLowerCase()) ? "Update Stock" : "Create Product (Archived)"}
+                    </button>
+                  </div>
                 </div>
-
-                <div className="md:col-span-2 flex items-end">
+              ) : (
+                <div className="flex justify-end pt-2">
                   <button
                     onClick={handleSaveProduct}
-                    className="w-full bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2.5 rounded-lg cursor-pointer transition-colors"
+                    className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2.5 px-6 rounded-lg cursor-pointer transition-colors"
                   >
-                    {products.find(p => p.sku.trim().toLowerCase() === newProdSku.trim().toLowerCase()) ? "Update Stock" : "Create Product (Archived)"}
+                    Create Product with Variants (Archived)
                   </button>
                 </div>
-              </div>
+              )}
             </div>
           )}
 

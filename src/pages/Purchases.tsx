@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, Product, WholesalePurchase } from '../lib/supabase';
+import { supabase, Product, WholesalePurchase, ProductVariant } from '../lib/supabase';
 import { Search, Plus, Trash2, FileText, CheckCircle2, AlertTriangle, ArrowDown, Eye } from 'lucide-react';
 
 export default function Purchases() {
@@ -14,12 +14,14 @@ export default function Purchases() {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [costPrice, setCostPrice] = useState<string>('0');
   const [purchaseQty, setPurchaseQty] = useState<number>(1);
 
   // Cart / Invoice state
   const [invoiceItems, setInvoiceItems] = useState<{
     product: Product;
+    selectedVariant?: ProductVariant;
     costPrice: number;
     quantity: number;
   }[]>([]);
@@ -39,6 +41,40 @@ export default function Purchases() {
   const [newProdCostPrice, setNewProdCostPrice] = useState('0');
   const [newProdQty, setNewProdQty] = useState<number>(1);
   const [selectedHistoryPurchase, setSelectedHistoryPurchase] = useState<WholesalePurchase | null>(null);
+
+  // New product variant builder states
+  const [newProdHasVariants, setNewProdHasVariants] = useState(false);
+  const [newProdVariantType, setNewProdVariantType] = useState('color');
+  const [newProdVariants, setNewProdVariants] = useState<{
+    name: string;
+    sku: string;
+    buying_price: string;
+    price: string;
+    stock: string;
+    hex?: string;
+  }[]>([]);
+
+  const addVariantRow = () => {
+    setNewProdVariants([
+      ...newProdVariants,
+      { name: '', sku: '', buying_price: '0', price: '0', stock: '1', hex: '#3b82f6' }
+    ]);
+  };
+
+  const removeVariantRow = (index: number) => {
+    const updated = [...newProdVariants];
+    updated.splice(index, 1);
+    setNewProdVariants(updated);
+  };
+
+  const updateVariantRow = (index: number, field: string, value: string) => {
+    const updated = [...newProdVariants];
+    updated[index] = {
+      ...updated[index],
+      [field]: value
+    };
+    setNewProdVariants(updated);
+  };
 
   useEffect(() => {
     fetchProducts();
@@ -121,6 +157,14 @@ export default function Purchases() {
 
   const addProductToInvoice = () => {
     if (!selectedProduct) return;
+    
+    // Check if variant is required but not selected
+    if (selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant) {
+      setErrorMsg('Please select a variant first.');
+      setTimeout(() => setErrorMsg(''), 4000);
+      return;
+    }
+
     const cost = parseFloat(costPrice) || 0;
     if (cost <= 0 || purchaseQty <= 0) {
       setErrorMsg('Price and quantity must be greater than zero.');
@@ -128,17 +172,30 @@ export default function Purchases() {
       return;
     }
 
-    const existingIndex = invoiceItems.findIndex(item => item.product.id === selectedProduct.id);
+    const existingIndex = invoiceItems.findIndex(item => 
+      item.product.id === selectedProduct.id && 
+      (item.selectedVariant?.name === selectedVariant?.name)
+    );
+    
     if (existingIndex > -1) {
       const updated = [...invoiceItems];
       updated[existingIndex].quantity += purchaseQty;
       updated[existingIndex].costPrice = cost;
       setInvoiceItems(updated);
     } else {
-      setInvoiceItems([...invoiceItems, { product: selectedProduct, costPrice: cost, quantity: purchaseQty }]);
+      setInvoiceItems([
+        ...invoiceItems, 
+        { 
+          product: selectedProduct, 
+          selectedVariant: selectedVariant || undefined, 
+          costPrice: cost, 
+          quantity: purchaseQty 
+        }
+      ]);
     }
 
     setSelectedProduct(null);
+    setSelectedVariant(null);
     setSearchQuery('');
     setCostPrice('0');
     setPurchaseQty(1);
@@ -165,18 +222,51 @@ export default function Purchases() {
 
     try {
       for (const item of invoiceItems) {
-        const newStock = item.product.stock + item.quantity;
-        await supabase.from('products').update({ stock: newStock }).eq('id', item.product.id);
+        if (item.selectedVariant && item.product.variants) {
+          const updatedVariants = item.product.variants.map((v: any) => {
+            if (v.name === item.selectedVariant?.name) {
+              return {
+                ...v,
+                stock: (v.stock || 0) + item.quantity
+              };
+            }
+            return v;
+          });
+          const totalStock = updatedVariants.reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
+          
+          const { error } = await supabase
+            .from('products')
+            .update({ 
+              variants: updatedVariants, 
+              stock: totalStock 
+            })
+            .eq('id', item.product.id);
+            
+          if (error) throw error;
+        } else {
+          const newStock = item.product.stock + item.quantity;
+          const { error } = await supabase
+            .from('products')
+            .update({ stock: newStock })
+            .eq('id', item.product.id);
+            
+          if (error) throw error;
+        }
       }
 
-      const items = invoiceItems.map(item => ({
-        product_id: item.product.id,
-        name: item.product.name,
-        sku: item.product.sku,
-        cost_price: item.costPrice,
-        quantity: item.quantity,
-        subtotal: item.costPrice * item.quantity
-      }));
+      const items = invoiceItems.map(item => {
+        const nameSuffix = item.selectedVariant ? ` (${item.selectedVariant.name})` : '';
+        const sku = item.selectedVariant?.sku || item.product.sku;
+        return {
+          product_id: item.product.id,
+          name: item.product.name + nameSuffix,
+          sku: sku,
+          cost_price: item.costPrice,
+          quantity: item.quantity,
+          subtotal: item.costPrice * item.quantity,
+          variant_name: item.selectedVariant?.name || null
+        };
+      });
 
       const grandTotal = items.reduce((sum, item) => sum + item.subtotal, 0);
 
@@ -186,7 +276,8 @@ export default function Purchases() {
         total: grandTotal
       };
 
-      const { data } = await supabase.from('wholesale_purchases').insert([record]).select();
+      const { data, error: insertError } = await supabase.from('wholesale_purchases').insert([record]).select();
+      if (insertError) throw insertError;
 
       if (data && data[0]) {
         setSuccessMsg(`Restocked wholesale purchase successfully. Stock levels updated!`);
@@ -197,9 +288,9 @@ export default function Purchases() {
         fetchProducts();
         fetchPurchaseHistory();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setErrorMsg('Failed to process wholesale purchase.');
+      setErrorMsg(`Failed to process wholesale purchase: ${err.message || err}`);
       setTimeout(() => setErrorMsg(''), 4000);
     }
   };
@@ -211,56 +302,107 @@ export default function Purchases() {
       return;
     }
 
-    const cost = parseFloat(newProdCostPrice) || 0;
-    if (cost <= 0 || newProdQty <= 0) {
-      setErrorMsg('Cost price and quantity must be greater than zero.');
+    if (newProdHasVariants && newProdVariants.length === 0) {
+      setErrorMsg('Please add at least one variant.');
       setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
 
     try {
-      // Auto-generate unique SKU and slug
-      const nameInitials = newProdName.split(' ').map(w => w[0]).join('').toUpperCase().replace(/[^A-Z]/g, '');
       const uniqueSuffix = Math.floor(1000 + Math.random() * 9000);
-      const generatedSku = `TK-${nameInitials || 'NEW'}-${uniqueSuffix}`;
       const generatedSlug = `${newProdName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${uniqueSuffix}`;
 
-      const newProductPayload = {
+      let productPayload: any = {
         name: newProdName.trim(),
-        sku: generatedSku,
-        slug: generatedSlug,
         category_id: newProdCategoryId,
-        price: cost * 1.5, // Default selling price markup
-        buying_price: cost,
-        stock: 0, // start with 0, will be incremented by the purchase restock process
-        cover_image: '---',
         featured: false,
         priority: 0,
         gallery: [],
-        tags: []
+        tags: ['archived'],
+        cover_image: 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=800&auto=format&fit=crop&q=80'
       };
 
-      const { data, error } = await supabase.from('products').insert([newProductPayload]).select();
+      if (newProdHasVariants) {
+        const variantsPayload = newProdVariants.map((v) => {
+          const varCost = parseFloat(v.buying_price) || 0;
+          const varPrice = parseFloat(v.price) || 0;
+          const varSlug = `${generatedSlug}-${v.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+          return {
+            type: newProdVariantType,
+            name: v.name.trim(),
+            sku: v.sku.trim() || `${newProdName.split(' ').map(w => w[0]).join('').toUpperCase()}-${v.name.toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+            buying_price: varCost,
+            price: varPrice,
+            stock: 0, // start with 0, will be restocked via cart
+            slug: varSlug,
+            ...(newProdVariantType === 'color' ? { hex: v.hex } : {})
+          };
+        });
 
-      if (error) {
-        throw error;
+        const firstVar = variantsPayload[0];
+
+        productPayload = {
+          ...productPayload,
+          sku: firstVar.sku,
+          slug: generatedSlug,
+          buying_price: firstVar.buying_price || 0,
+          price: firstVar.price || 0,
+          stock: 0,
+          variants: variantsPayload,
+          variant_type: newProdVariantType
+        };
+      } else {
+        const cost = parseFloat(newProdCostPrice) || 0;
+        const nameInitials = newProdName.split(' ').map(w => w[0]).join('').toUpperCase().replace(/[^A-Z]/g, '');
+        const generatedSku = `TK-${nameInitials || 'NEW'}-${uniqueSuffix}`;
+
+        productPayload = {
+          ...productPayload,
+          sku: generatedSku,
+          slug: generatedSlug,
+          price: cost * 1.5,
+          buying_price: cost,
+          stock: 0
+        };
       }
+
+      const { data, error } = await supabase.from('products').insert([productPayload]).select();
+      if (error) throw error;
 
       if (data && data[0]) {
         const createdProd = data[0];
         
-        // Add to cart list
-        setInvoiceItems([...invoiceItems, { product: createdProd, costPrice: cost, quantity: newProdQty }]);
-        
-        // Reset and hide form
+        if (newProdHasVariants && createdProd.variants) {
+          const newItems = createdProd.variants.map((v: any, index: number) => {
+            const qty = parseInt(newProdVariants[index].stock) || 1;
+            const cost = parseFloat(newProdVariants[index].buying_price) || 0;
+            return {
+              product: createdProd,
+              selectedVariant: v,
+              costPrice: cost,
+              quantity: qty
+            };
+          });
+          setInvoiceItems([...invoiceItems, ...newItems]);
+        } else {
+          setInvoiceItems([
+            ...invoiceItems, 
+            { 
+              product: createdProd, 
+              costPrice: parseFloat(newProdCostPrice) || 0, 
+              quantity: newProdQty 
+            }
+          ]);
+        }
+
         setNewProdName('');
         setNewProdCostPrice('0');
         setNewProdQty(1);
+        setNewProdHasVariants(false);
+        setNewProdVariants([]);
         setShowNewProductForm(false);
         setSuccessMsg(`Successfully added ${createdProd.name} to catalog and restock cart.`);
         setTimeout(() => setSuccessMsg(''), 4000);
-        
-        // Refresh catalog list
         fetchProducts();
       }
     } catch (err: any) {
@@ -368,11 +510,17 @@ export default function Purchases() {
                         {searchResults.map((product) => (
                           <button
                             key={product.id}
+                            type="button"
                             onClick={() => {
                               setSelectedProduct(product);
                               setSearchQuery(product.name);
                               setShowDropdown(false);
-                              setCostPrice(product.price.toString());
+                              setSelectedVariant(null);
+                              if (product.variants && product.variants.length > 0) {
+                                setCostPrice('0');
+                              } else {
+                                setCostPrice((product.buying_price || product.price * 0.5).toString());
+                              }
                             }}
                             className="w-full p-2.5 text-left border-b border-tk-border hover:bg-tk-blue-light/20 dark:hover:bg-tk-surface-2 transition-colors text-xs flex justify-between text-tk-text-primary"
                           >
@@ -396,6 +544,33 @@ export default function Purchases() {
                         </div>
                         <span className="text-3xs text-tk-text-tertiary">Current Stock: {selectedProduct.stock} units</span>
                       </div>
+
+                      {selectedProduct.variants && selectedProduct.variants.length > 0 && (
+                        <div>
+                          <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Select Variant to Restock *</label>
+                          <select
+                            value={selectedVariant ? selectedVariant.name : ''}
+                            onChange={(e) => {
+                              const variant = selectedProduct.variants?.find(v => v.name === e.target.value);
+                              if (variant) {
+                                setSelectedVariant(variant);
+                                setCostPrice((variant.buying_price || selectedProduct.buying_price || (variant.price || selectedProduct.price) * 0.5).toString());
+                              } else {
+                                setSelectedVariant(null);
+                                setCostPrice('0');
+                              }
+                            }}
+                            className="w-full bg-tk-surface border border-tk-border rounded-lg p-2 text-xs text-tk-text-primary focus:outline-none"
+                          >
+                            <option value="">-- Choose Variant --</option>
+                            {selectedProduct.variants.map((v) => (
+                              <option key={v.name} value={v.name} className="bg-tk-surface">
+                                {v.name} (Current Stock: {v.stock ?? 0}, SKU: {v.sku || '—'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-2 gap-3.5">
                         <div>
@@ -460,34 +635,171 @@ export default function Purchases() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div>
-                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Wholesale Cost Price (₹)</label>
-                      <input
-                        type="text"
-                        value={newProdCostPrice}
-                        onChange={(e) => setNewProdCostPrice(e.target.value)}
-                        className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2 text-xs text-tk-text-primary focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Restock Quantity</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={newProdQty}
-                        onChange={(e) => setNewProdQty(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2 text-xs text-tk-text-primary focus:outline-none text-center font-bold"
-                      />
-                    </div>
+                  {/* Has Variants Toggle */}
+                  <div className="flex items-center space-x-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="newProdHasVariants"
+                      checked={newProdHasVariants}
+                      onChange={(e) => {
+                        setNewProdHasVariants(e.target.checked);
+                        if (e.target.checked && newProdVariants.length === 0) {
+                          addVariantRow();
+                        }
+                      }}
+                      className="rounded border-tk-border bg-tk-surface-2 text-tk-blue-mid focus:ring-tk-blue-mid w-4 h-4 cursor-pointer"
+                    />
+                    <label htmlFor="newProdHasVariants" className="text-xs font-semibold text-tk-text-primary cursor-pointer select-none">
+                      This product has multiple variants (e.g. Size, Color, Capacity)
+                    </label>
                   </div>
+
+                  {newProdHasVariants ? (
+                    <div className="border border-tk-border rounded-xl p-4 bg-tk-surface-2 space-y-3">
+                      <div className="flex items-center justify-between border-b border-tk-border pb-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-2xs font-bold text-tk-text-primary">Variant Type:</span>
+                          <select
+                            value={newProdVariantType}
+                            onChange={(e) => setNewProdVariantType(e.target.value)}
+                            className="bg-tk-surface border border-tk-border rounded px-2 py-1 text-xs text-tk-text-primary focus:outline-none"
+                          >
+                            <option value="color">Color</option>
+                            <option value="size">Size</option>
+                            <option value="volume">Volume</option>
+                            <option value="capacity">Capacity</option>
+                            <option value="weight">Weight</option>
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addVariantRow}
+                          className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-3xs py-1 px-3 rounded-lg cursor-pointer"
+                        >
+                          + Add Variant Row
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-3xs border-collapse min-w-[450px]">
+                          <thead>
+                            <tr className="border-b border-tk-border text-tk-text-secondary">
+                              <th className="pb-1.5 font-bold">Variant Name *</th>
+                              <th className="pb-1.5 font-bold">SKU (Optional)</th>
+                              <th className="pb-1.5 font-bold text-center">Cost (₹)</th>
+                              <th className="pb-1.5 font-bold text-center">Retail (₹)</th>
+                              <th className="pb-1.5 font-bold text-center">Qty</th>
+                              {newProdVariantType === 'color' && <th className="pb-1.5 font-bold text-center">Color Hex</th>}
+                              <th className="pb-1.5 text-center"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {newProdVariants.map((v, index) => (
+                              <tr key={index} className="border-b border-tk-border/50">
+                                <td className="py-1.5">
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. Red, XL, 128GB"
+                                    value={v.name}
+                                    onChange={(e) => updateVariantRow(index, 'name', e.target.value)}
+                                    className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-24"
+                                  />
+                                </td>
+                                <td className="py-1.5">
+                                  <input
+                                    type="text"
+                                    placeholder="Auto-gen if empty"
+                                    value={v.sku}
+                                    onChange={(e) => updateVariantRow(index, 'sku', e.target.value)}
+                                    className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-24 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1.5 text-center">
+                                  <input
+                                    type="text"
+                                    value={v.buying_price}
+                                    onChange={(e) => updateVariantRow(index, 'buying_price', e.target.value)}
+                                    className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-12 text-center"
+                                  />
+                                </td>
+                                <td className="py-1.5 text-center">
+                                  <input
+                                    type="text"
+                                    value={v.price}
+                                    onChange={(e) => updateVariantRow(index, 'price', e.target.value)}
+                                    className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-12 text-center"
+                                  />
+                                </td>
+                                <td className="py-1.5 text-center">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={v.stock}
+                                    onChange={(e) => updateVariantRow(index, 'stock', e.target.value)}
+                                    className="bg-tk-surface border border-tk-border rounded px-1.5 py-0.5 text-3xs text-tk-text-primary w-10 text-center font-bold"
+                                  />
+                                </td>
+                                {newProdVariantType === 'color' && (
+                                  <td className="py-1.5 text-center">
+                                    <div className="flex items-center justify-center space-x-1">
+                                      <input
+                                        type="color"
+                                        value={v.hex || '#3b82f6'}
+                                        onChange={(e) => updateVariantRow(index, 'hex', e.target.value)}
+                                        className="w-5 h-5 border-0 rounded cursor-pointer p-0 bg-transparent"
+                                      />
+                                      <span className="font-mono text-[9px] text-tk-text-secondary">{v.hex || '#3b82f6'}</span>
+                                    </div>
+                                  </td>
+                                )}
+                                <td className="py-1.5 text-center">
+                                  {newProdVariants.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeVariantRow(index)}
+                                      className="text-red-500 hover:text-red-400"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Wholesale Cost Price (₹)</label>
+                        <input
+                          type="text"
+                          value={newProdCostPrice}
+                          onChange={(e) => setNewProdCostPrice(e.target.value)}
+                          className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2 text-xs text-tk-text-primary focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-3xs text-tk-text-secondary uppercase font-semibold mb-1 block">Restock Quantity</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={newProdQty}
+                          onChange={(e) => setNewProdQty(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full bg-tk-surface-2 border border-tk-border rounded-lg px-3 py-2 text-xs text-tk-text-primary focus:outline-none text-center font-bold"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex justify-end pt-2">
                     <button
+                      type="button"
                       onClick={handleAddNewProductToCatalog}
                       className="bg-tk-blue-mid hover:bg-tk-blue-deep text-white font-bold text-xs py-2 px-5 rounded-lg transition-colors cursor-pointer"
                     >
-                      Add New Product Item
+                      {newProdHasVariants ? "Add Product with Variants" : "Add New Product Item"}
                     </button>
                   </div>
                 </div>
@@ -520,24 +832,26 @@ export default function Purchases() {
                       {invoiceItems.map((item, idx) => {
                         const matched = products.find(p => p.id === item.product.id) || item.product;
                         const hasImage = matched.cover_image && matched.cover_image !== '---';
+                        const displayName = matched.name + (item.selectedVariant ? ` (${item.selectedVariant.name})` : '');
+                        const displaySku = item.selectedVariant?.sku || matched.sku;
                         return (
-                          <tr key={item.product.id} className="border-b border-tk-border">
+                          <tr key={`${item.product.id}-${item.selectedVariant?.name || 'base'}-${idx}`} className="border-b border-tk-border">
                             <td className="py-2.5">
                               <div className="flex items-center space-x-2.5">
                                 {hasImage ? (
                                   <img 
-                                    src={matched.cover_image} 
-                                    alt={matched.name} 
+                                    src={item.selectedVariant?.image_url || matched.cover_image} 
+                                    alt={displayName} 
                                     className="w-8 h-8 object-cover rounded-lg bg-tk-surface-2 border border-tk-border flex-shrink-0"
                                   />
                                 ) : (
                                   <div className="w-8 h-8 rounded-lg bg-tk-surface-2 border border-tk-border flex items-center justify-center flex-shrink-0 text-tk-text-tertiary font-bold text-3xs font-mono">
-                                    {matched.name.substring(0, 2).toUpperCase()}
+                                    {displayName.substring(0, 2).toUpperCase()}
                                   </div>
                                 )}
                                 <div>
-                                  <p className="font-semibold text-tk-text-primary">{matched.name}</p>
-                                  <p className="text-3xs text-tk-text-secondary font-mono">SKU: {matched.sku}</p>
+                                  <p className="font-semibold text-tk-text-primary">{displayName}</p>
+                                  <p className="text-3xs text-tk-text-secondary font-mono">SKU: {displaySku}</p>
                                 </div>
                               </div>
                             </td>
@@ -671,27 +985,32 @@ export default function Purchases() {
                     </tr>
                   </thead>
                   <tbody>
-                     {selectedHistoryPurchase.items.map((item, idx) => {
-                       const matched = products.find(p => p.id === item.product_id);
-                       const displayName = matched ? matched.name : item.name;
-                       const displaySku = matched ? matched.sku : item.sku;
-                       const hasImage = matched && matched.cover_image && matched.cover_image !== '---';
-                       
-                       return (
-                         <tr key={idx} className="border-b border-tk-border text-tk-text-primary">
-                           <td className="p-2.5">
-                             <div className="flex items-center space-x-2.5">
-                               {hasImage ? (
-                                 <img 
-                                   src={matched.cover_image} 
-                                   alt={displayName} 
-                                   className="w-8 h-8 object-cover rounded-lg bg-tk-surface-2 border border-tk-border flex-shrink-0"
-                                 />
-                               ) : (
-                                 <div className="w-8 h-8 rounded-lg bg-tk-surface-2 border border-tk-border flex items-center justify-center flex-shrink-0 text-tk-text-tertiary font-bold text-3xs font-mono">
-                                   {displayName.substring(0, 2).toUpperCase()}
-                                 </div>
-                               )}
+                      {selectedHistoryPurchase.items.map((item, idx) => {
+                        const matched = products.find(p => p.id === item.product_id);
+                        const displayName = item.name;
+                        const displaySku = item.sku;
+                        let imageUrl = matched?.cover_image;
+                        if (matched?.variants && item.variant_name) {
+                          const v = matched.variants.find(varObj => varObj.name === item.variant_name);
+                          if (v?.image_url) imageUrl = v.image_url;
+                        }
+                        const hasImage = imageUrl && imageUrl !== '---';
+                        
+                        return (
+                          <tr key={idx} className="border-b border-tk-border text-tk-text-primary">
+                            <td className="p-2.5">
+                              <div className="flex items-center space-x-2.5">
+                                {hasImage ? (
+                                  <img 
+                                    src={imageUrl} 
+                                    alt={displayName} 
+                                    className="w-8 h-8 object-cover rounded-lg bg-tk-surface-2 border border-tk-border flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-lg bg-tk-surface-2 border border-tk-border flex items-center justify-center flex-shrink-0 text-tk-text-tertiary font-bold text-3xs font-mono">
+                                    {displayName.substring(0, 2).toUpperCase()}
+                                  </div>
+                                )}
                                <div>
                                  <p className="font-semibold">{displayName}</p>
                                  <p className="text-3xs text-tk-text-secondary font-mono">SKU: {displaySku}</p>

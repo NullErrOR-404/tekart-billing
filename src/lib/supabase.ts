@@ -121,6 +121,7 @@ export interface WholesalePurchase {
     cost_price: number;
     quantity: number;
     subtotal: number;
+    variant_name?: string | null;
   }[];
   total: number;
   created_at: string;
