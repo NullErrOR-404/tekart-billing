@@ -29,6 +29,8 @@ export interface Category {
 export interface ProductVariant {
   type?: string; // "color" | "size" | "volume" | "capacity" | "weight"
   name: string;
+  slug?: string;          // variant-specific URL slug
+  buying_price?: number;  // wholesale cost per variant
   hex?: string;
   image_url?: string;
   price?: number;

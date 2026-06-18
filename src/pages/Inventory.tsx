@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, Product, Category } from '../lib/supabase';
-import { Search, AlertTriangle, ArrowRightLeft, FileText, CheckCircle2, ChevronRight, Trash2, Plus, Info, Edit, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, AlertTriangle, ArrowRightLeft, FileText, CheckCircle2, ChevronRight, ChevronDown, Trash2, Plus, Info, Edit, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface InventoryProps {
   currentUserRole: 'admin' | 'cashier';
@@ -56,6 +56,18 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
   // Sorting states
   const [sortField, setSortField] = useState<'name' | 'price' | 'stock' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Expanded variant rows
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (productId: string) => {
+    setExpandedProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
 
   const isAdmin = currentUserRole === 'admin';
   const canEditStock = isAdmin || cashierPermissions.editStockDirectly;
@@ -731,42 +743,31 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                 </tr>
               </thead>
               <tbody>
-                {sortedProducts.map(p => (
-                  <tr key={p.id} className="border-b border-tk-border hover:bg-tk-blue-light/10">
+                {sortedProducts.map(p => {
+                  const hasVariants = p.variants && p.variants.length > 0;
+                  const isExpanded = expandedProducts.has(p.id);
+                  return (
+                    <React.Fragment key={p.id}>
+                    <tr 
+                      className={`border-b border-tk-border hover:bg-tk-blue-light/10 ${hasVariants ? 'cursor-pointer' : ''}`}
+                      onClick={hasVariants ? () => toggleExpand(p.id) : undefined}
+                    >
                     <td className="py-3 font-mono font-bold text-tk-text-primary text-3xs">{p.sku}</td>
                     <td className="py-3 flex items-center">
                       <img src={p.cover_image} alt={p.name} className="w-7 h-7 object-cover rounded mr-2.5 bg-tk-surface-2 border border-tk-border" />
                       <div className="flex flex-col">
-                        <span className="font-semibold text-tk-text-primary">{p.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-tk-text-primary">{p.name}</span>
+                          {hasVariants && (
+                            <span className="text-[9px] font-bold text-tk-blue-deep bg-tk-blue-light px-1.5 py-0.5 rounded-full">
+                              {p.variants!.length} variants
+                            </span>
+                          )}
+                        </div>
                         {p.tags?.includes('archived') && (
                           <span className="text-[9px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.2 rounded border border-red-500/20 w-fit mt-0.5">
                             Archived / Hidden
                           </span>
-                        )}
-                        {p.variants && p.variants.length > 0 && (
-                          <div className="flex items-center gap-1 mt-1">
-                            {p.variants.map((color, cIdx) => {
-                              const isSoldOut = color.stock !== undefined && color.stock <= 0;
-                              return (
-                                <div 
-                                  key={cIdx} 
-                                  className="relative" 
-                                  title={`${color.name} (Stock: ${color.stock ?? 0})`}
-                                >
-                                  <span 
-                                    className="w-3.5 h-3.5 rounded-full border border-tk-border/50 block shadow-2xs shrink-0 relative" 
-                                    style={{ backgroundColor: color.hex }}
-                                  >
-                                    {isSoldOut && (
-                                      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-red-600 leading-none select-none bg-black/10 rounded-full">
-                                        ×
-                                      </span>
-                                    )}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
                         )}
                       </div>
                     </td>
@@ -811,7 +812,8 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                           </span>
                           {canEditStock && (
                             <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setEditingProductId(p.id);
                                 setEditingStockVal(p.stock.toString());
                               }}
@@ -826,16 +828,71 @@ export default function Inventory({ currentUserRole, cashierPermissions }: Inven
                     </td>
                     {isAdmin && <td className="py-3 text-right font-bold text-tk-gold">₹{(p.price * p.stock).toFixed(2)}</td>}
                     <td className="py-3 text-right pr-2">
-                      <button
-                        onClick={() => handleDeleteProduct(p.id, p.name)}
-                        className="text-red-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
-                        title="Delete Product"
-                      >
-                        <Trash2 className="w-4 h-4 inline" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        {hasVariants && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleExpand(p.id); }}
+                            className="text-tk-text-secondary hover:text-tk-blue-deep p-1.5 rounded-lg hover:bg-tk-blue-light/20 transition-colors cursor-pointer"
+                            title={isExpanded ? 'Collapse variants' : 'Expand variants'}
+                          >
+                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id, p.name); }}
+                          className="text-red-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
+                          title="Delete Product"
+                        >
+                          <Trash2 className="w-4 h-4 inline" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))}
+
+                  {/* Expanded variant sub-rows */}
+                  {hasVariants && isExpanded && p.variants!.map((v, vIdx) => (
+                    <tr key={`${p.id}-v-${vIdx}`} className="bg-tk-blue-pale/20 dark:bg-tk-surface-2/40 border-b border-tk-border/50">
+                      <td className="py-2 pl-6 font-mono text-3xs text-tk-text-tertiary">{v.sku || '—'}</td>
+                      <td className="py-2 pl-4 flex items-center">
+                        <div className="w-1 h-6 bg-tk-blue-mid/30 rounded-full mr-2.5 shrink-0" />
+                        {v.image_url ? (
+                          <img src={v.image_url} alt={v.name} className="w-6 h-6 object-cover rounded mr-2 bg-tk-surface-2 border border-tk-border/50" />
+                        ) : (
+                          <div className="w-6 h-6 rounded mr-2 bg-tk-surface-2 border border-tk-border/50 flex items-center justify-center">
+                            {v.hex ? (
+                              <span className="w-4 h-4 rounded-full block" style={{ backgroundColor: v.hex }} />
+                            ) : (
+                              <span className="text-[8px] text-tk-text-tertiary">—</span>
+                            )}
+                          </div>
+                        )}
+                        <span className="text-xs text-tk-text-secondary font-medium">{v.name}</span>
+                      </td>
+                      <td className="py-2 text-tk-text-tertiary text-3xs">—</td>
+                      {isAdmin && (
+                        <td className="py-2 text-center text-purple-400 text-xs font-medium">
+                          {v.buying_price ? `₹${v.buying_price.toFixed(2)}` : '—'}
+                        </td>
+                      )}
+                      <td className="py-2 text-center text-tk-text-secondary text-xs">
+                        {v.price ? `₹${v.price.toFixed(2)}` : `₹${p.price.toFixed(2)}`}
+                      </td>
+                      <td className="py-2 text-center">
+                        <span className={`font-bold px-2 py-0.5 rounded-full text-3xs ${
+                          (v.stock ?? 0) > 10 ? 'text-green-500 bg-green-500/10' :
+                          (v.stock ?? 0) > 0 ? 'text-amber-500 bg-amber-500/10' :
+                          'text-red-500 bg-red-500/10'
+                        }`}>
+                          {v.stock ?? 0}
+                        </span>
+                      </td>
+                      {isAdmin && <td className="py-2 text-right text-xs text-tk-text-tertiary">—</td>}
+                      <td className="py-2"></td>
+                    </tr>
+                  ))}
+                  </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
